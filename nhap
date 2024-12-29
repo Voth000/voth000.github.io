@@ -1,0 +1,802 @@
+#s1 {
+top:20%;
+left: 20%;
+}
+
+#s2 {
+    top:80%;
+    left: 40%;
+    }
+
+    #s3 {
+        top:60%;
+        right: 20%;
+        }
+        #s4 {
+            top:10%;
+            right: 30%;
+            }
+    
+            onmousemove = function(e){
+ 
+
+                //meat and potatoes of the snippet
+                var pos = e;
+                var dot;
+                dot = document.createElement('div');
+                dot.className = "dot";
+                dot.style.left = pos.x + "px";
+                dot.style.top = pos.y + "px";
+                document.body.appendChild(dot);
+              }      
+
+
+             
+              let activeIndex2 = 0;
+              
+              function switchButton(event) {
+                 
+              
+                  const bebes = document.querySelectorAll('.bebe');
+                  bebes[activeIndex2].classList.remove('active'); 
+                  if (event.type === 'wheel') {
+                      activeIndex2 = (activeIndex2 + (event.deltaY > 0 ? 1 : -1) + bebes.length) % bebes.length; 
+                  } else if (event.type === 'mouseover') {
+                    activeIndex2 = Array.from(buttons).indexOf(event.target); 
+                  }
+                  bebes[activeIndex2].classList.add('active'); 
+              
+                  setTimeout(() => {
+                    
+                      bebes[activeIndex2].classList.add('active');
+                  }, 20); 
+              }
+              
+              
+              window.addEventListener('wheel', switchButton);
+
+
+
+              const maxScrollDownModel = 4; // Maximum allowed scrolls down in the #model div
+let scrollDownCountModel = 0; // Count for scrolling down in the #model div
+let currentDivIndex = 0; // Index of the currently active div
+const divs = document.querySelectorAll('.section'); // Select all sections
+const container = document.getElementById('scrollContainer'); 
+function onWheel(event) {
+    if (currentDivIndex === 0) { // When in the #model div
+        event.preventDefault(); 
+
+        if (event.deltaY > 0) { 
+            if (scrollDownCountModel < maxScrollDownModel) {
+                scrollDownCountModel++;
+                container.scrollTop += event.deltaY; 
+            } else {
+                if (currentDivIndex < divs.length - 1) {
+                    currentDivIndex++;
+                    container.scrollTop = divs[currentDivIndex].offsetTop;
+                    scrollDownCountModel = 0; 
+                }
+            }
+        } else { 
+            if (scrollDownCountModel > 0) {
+                scrollDownCountModel--;
+                container.scrollTop += event.deltaY; 
+            } else if (currentDivIndex > 0) {
+                currentDivIndex--;
+                container.scrollTop = divs[currentDivIndex].offsetTop;
+            }
+        }
+    } else { 
+    }
+}
+window.addEventListener('wheel', onWheel, { passive: false });
+container.scrollTop = 0; 
+
+
+<div class="bio">
+<span> Hei, I'm Voth, a generalist graphic designer based in Tampere 🇫🇮 & Saigon 🇻🇳 </span>
+</div> 
+
+.bio {
+    
+    white-space: nowrap;
+    overflow: hidden;
+  }
+
+
+.bio span {
+    display: block;
+    font-size: 12px;
+  letter-spacing: 0.1rem;
+  font-family: "IBM Plex Mono", monospace;
+  color: #000000;
+  border-right: 2px dashed #54545485;
+  width: 100%;
+  text-wrap: wrap;
+  overflow: hidden;
+height:fit-content;
+  /* steps needs to equal the exact amount of characters in the paragraph. See https://wordcounter.net/character-count for easy counting. */
+
+  animation: typing 2s steps(81), cursor 0.1s step-end infinite alternate;
+}
+
+.bio {
+    width: fit-content;
+    display: inline-block;
+    height: fit-content;
+ max-width: 10%;
+}
+
+
+@keyframes cursor {
+  50% {
+    border-color: transparent;
+  }
+}
+
+@keyframes typing {
+  from {
+    opacity: 0;
+    width: 0;
+  }
+}
+
+#t1 .bio {
+  
+    position: absolute;
+    top: 0%;
+    right: 1%;
+}
+
+
+
+
+const maxScrollDownModel = 4; // Maximum allowed scrolls down in the #model div
+let scrollDownCountModel = 0; // Count for scrolling down in the #model div
+let currentDivIndex = 0; // Index of the currently active div
+const divs = document.querySelectorAll('.section'); // Select all sections
+const container = document.getElementById('scrollContainer'); 
+function onWheel(event) {
+    if (currentDivIndex === 0) {
+      event.preventDefault(); 
+        if (event.deltaY > 0) { 
+            if (scrollDownCountModel < maxScrollDownModel) {
+                scrollDownCountModel++;
+                container.scrollTop += event.deltaY; 
+            } else {
+                if (currentDivIndex < divs.length - 1) {
+                    currentDivIndex++;
+                    container.scrollTop = divs[currentDivIndex].offsetTop;
+                    scrollDownCountModel = 0; 
+                }
+            }
+        } else { 
+            if (scrollDownCountModel > 0) {
+                scrollDownCountModel--;
+                container.scrollTop += event.deltaY; 
+            } else if (currentDivIndex > 0) {
+                currentDivIndex--;
+                container.scrollTop = divs[currentDivIndex].offsetTop;
+            }
+        }
+    }
+}
+window.addEventListener('wheel', onWheel, { passive: false });
+container.scrollTop = 0; 
+
+
+let activeIndex = 0;
+let activeIndex1 = 0;
+let activeIndex2 = 0;
+function switchButton(event) {
+    const buttons = document.querySelectorAll('.main1');
+    buttons[activeIndex].classList.remove('active'); 
+
+
+    if (event.type === 'wheel') {
+        //activeIndex = (activeIndex + (event.deltaY > 0 ? 1 : -1) + buttons.length) % buttons.length; 
+    } 
+    
+    else if (event.type === 'mouseover') {
+        activeIndex = Array.from(buttons).indexOf(event.target); 
+    }
+    buttons[activeIndex].classList.add('active'); 
+
+
+
+    const boxs = document.querySelectorAll('.main2');
+    boxs[activeIndex1].classList.remove('active'); 
+    if (event.type === 'wheel') {
+       // activeIndex1 = (activeIndex1 + (event.deltaY > 0 ? 1 : -1) + boxs.length) % boxs.length; 
+    } else if (event.type === 'mouseover') {
+        activeIndex1 = Array.from(buttons).indexOf(event.target); 
+    }
+    boxs[activeIndex1].classList.add('active'); 
+
+    const bebes = document.querySelectorAll('.bebe');
+    bebes[activeIndex2].classList.remove('active'); 
+    if (event.type === 'wheel') {
+       // activeIndex2 = (activeIndex2 + (event.deltaY > 0 ? 1 : -1) + bebes.length) % bebes.length; 
+    } else if (event.type === 'mouseover') {
+      activeIndex2 = Array.from(buttons).indexOf(event.target); 
+    }
+    bebes[activeIndex2].classList.add('active'); 
+
+
+    gsap.fromTo(bebes[activeIndex2], 
+      { y: 100, opacity: 0 }, 
+      { 
+          y: 0, 
+          opacity: 1, 
+          duration: 0.5, 
+          ease: "power2.out"
+      }
+  );
+
+    setTimeout(() => {
+        buttons[activeIndex].classList.add('active');
+        boxs[activeIndex1].classList.add('active');
+        bebes[activeIndex2].classList.add('active');
+    }, 20); 
+}
+
+
+window.addEventListener('wheel', switchButton);
+
+
+<video class="mot" playsinline autoplay muted id="bgvideo" style="width:100%; height=100%" autoplay="autoPlay" loop="true" src="./3.mp4" alt="play1"> </video>
+
+<div id="vfx">
+  <div class="mot" id="transtop"></div>
+  
+  <div class="mot" id="transbot"></div>
+</div>
+
+
+
+///glb2
+import * as THREE from 'https://unpkg.com/three@0.139.2/build/three.module.js';
+
+import {GLTFLoader} from "./GLTFLoader.js";
+
+import { OrbitControls } from "https://cdn.jsdelivr.net/npm/three@0.121.1/examples/jsm/controls/OrbitControls.js";
+
+import {DragControls} from "./DragControls.js";
+
+
+
+const container = document.getElementById('model');
+const canvas = document.querySelector('.webgl')
+const scene = new THREE.Scene()
+
+let root1;
+const s1 = $('#s1');
+const s2 = $('#s2');
+const s3 = $('#s3');
+const s4 = $('#s4');
+
+
+
+
+
+///glb2
+
+const loader1 = new GLTFLoader()
+loader1.load('./12.glb', function(glb){
+  console.log(glb);
+
+ 
+root1 = glb.scene;
+adjustRootScale(); 
+root1.rotation.y = -0.5;
+root1.name = "root1";
+root1.alpha = true;
+root1.metalness = 0.1;
+root1.visible = true;
+
+root1.traverse(function(node1) {
+    if(node1.isMesh)
+    node1.castShadow = false;
+    node1.receiveShadow = false;
+    node1.opacity = 0.3;
+    
+});
+   scene.add(root1);
+}, function(xhr){
+   console.log(xhr.loaded/xhr.total * 100 + "% loaded")
+}, function(error){
+   console.log("an error has occurred")
+})
+
+
+//light
+const light = new THREE.AmbientLight(0xFFFFFF, 2)
+light.position.set(12,20,5)
+
+scene.add(light)
+
+const al = new THREE.AmbientLight(0xFFFFFF, 0.4)
+al.position.set(-20,-20,-5)
+
+scene.add( al )
+
+
+//Create a plane that receives shadows (but does not cast them)
+//const planeGeometry = new THREE.PlaneGeometry( 40, 30, 32, 32 );
+//const planeMaterial = new THREE.MeshStandardMaterial( { color: 0xFFFFFF } )
+//const plane = new THREE.Mesh( planeGeometry, planeMaterial );
+//plane.receiveShadow = true;
+//plane.position.y = -3;
+//plane.rotateX( - Math.PI / 2);
+//scene.add( plane );
+///grid
+
+const grid = new THREE.GridHelper(0,0);
+scene.add( grid );
+//Boiler 
+
+const sizes = {
+    width: window.innerWidth,
+    height: window.innerHeight
+}
+
+//camera
+const camera = new THREE.PerspectiveCamera(45, sizes.width/sizes.height, 0.1, 1000)
+camera.position.set(0,5,12)
+camera.lookAt(scene.position)
+scene.add(camera)
+
+
+
+const renderer = new THREE.WebGL1Renderer({
+    antialias: true,
+    canvas: canvas,
+    alpha: true
+})
+
+///plane
+
+
+
+///orbit
+let controls;
+
+controls = new OrbitControls(camera, renderer.domElement);
+controls.autoRotate = false;
+controls.enableZoom = false;
+
+
+
+
+
+let radius;
+const segments = 64;
+const points = [];
+
+
+// Function to calculate the radius based on viewport size
+function calculateRadius() {
+    if (window.innerWidth < 500 || window.innerHeight < 500) {
+        return Math.min(window.innerWidth / 1.75, window.innerHeight / 1.75) * 0.015;
+    } else {
+        return Math.min(window.innerWidth / 1.25, window.innerHeight / 1.25) * 0.015;
+    }
+}
+
+// Function to update circle points based on the current radius
+function updateCirclePoints() {
+    radius = calculateRadius();
+    points.length = 0; // Clear previous points
+    for (let i = 0; i <= segments; i++) {
+        const theta = (i / segments) * 2 * Math.PI;
+        points.push(new THREE.Vector3(radius * Math.cos(theta), radius * Math.sin(theta), 0));
+    }
+    geometry.setFromPoints(points);
+}
+
+const geometry = new THREE.BufferGeometry().setFromPoints(points);
+const material = new THREE.LineBasicMaterial({ color: 0x292929 });
+
+// Create the final object to add to the scene
+const circle = new THREE.LineLoop(geometry, material);
+
+// Apply transformations (rotate and scale)
+circle.rotation.x = Math.PI / -2; // Rotate 45 degrees around the X axis
+circle.rotation.y = Math.PI / -8; // Rotate 45 degrees around the Y axis
+circle.scale.set(0.5, 0.5, 0.5); // Scale the circle by 1.5 in all directions
+circle.position.y= 1;
+scene.add(circle);
+
+// Create the final object to add to the scene
+const circle1 = new THREE.LineLoop(geometry, material);
+
+// Apply transformations (rotate and scale)
+circle1.rotation.x = Math.PI / -2; // Rotate 45 degrees around the X axis
+circle1.rotation.y = Math.PI / -8; // Rotate 45 degrees around the Y axis
+circle1.scale.set(0.5, 0.5, 0.5); // Scale the circle by 1.5 in all directions
+circle1.position.y= 1;
+scene.add(circle1);
+
+let activeIndex = 0;
+//responsive
+// Function to position buttons based on circle points
+function positionButtons() {
+    const buttons = document.querySelectorAll('.main1');
+    const boxs = document.querySelectorAll('.main2');
+
+    const buttonPoints = [34, 48, 2, 18]; // Indices of circle points to use for buttons
+
+    buttonPoints.forEach((pointIndex, i) => {
+        const vector = points[pointIndex].clone();
+        vector.applyMatrix4(circle.matrixWorld); // Apply the circle's transformations
+        vector.project(camera); // Project the vector to screen space
+
+        const x = (vector.x * 0.5 + 0.5) * container.clientWidth;
+        const y = (vector.y * -0.5 + 0.5) * container.clientHeight;
+
+        const x1 = (vector.x * 0.5 + 0.5) * container.clientWidth - 40;
+        const y1 = (vector.y * -0.5 + 0.5) * container.clientHeight + 20;
+
+        const button = buttons[i];
+        button.style.left = `${x}px`;
+        button.style.top = `${y}px`;
+
+        const box = boxs[i];
+        box.style.left = `${x1}px`;
+        box.style.top = `${y1}px`;
+    });
+    
+}
+
+const buttonPoints = [40];
+
+// Function to position the arrow
+function positionArrow() {
+    const arrow = document.querySelector('.arrow');
+    const pointIndex = buttonPoints[activeIndex];
+
+    const vector = points[pointIndex].clone();
+    vector.applyMatrix4(circle1.matrixWorld);
+    vector.project(camera);
+
+    const x = (vector.x * 0.5 + 0.5) * container.clientWidth ; // Add 2px offset if needed
+    const y = (vector.y * -0.5 + 0.5) * container.clientHeight ; // Add 2px offset if needed
+
+    arrow.style.left = `${x}px`;
+    arrow.style.top = `${y}px`;
+}
+
+
+// Initial positioning
+// Function to adjust root1 scale based on window width
+function adjustRootScale() {
+    if (root1) {
+        if (window.innerWidth < 500) {
+            root1.scale.set(3, 3, 3);
+            root1.position.set(0, -3, 0); 
+        } else {
+            root1.scale.set(5, 5, 5);
+            root1.position.set(-0.5, -6.5, 0);  
+        }
+    }
+}
+
+
+
+
+let targetRotationY = -0;
+const rotationSpeed = 0; 
+let wheelEventTriggered = false;
+// Adjust this value for faster/slower interpolation
+
+function onMouseWheel(event) {
+
+    const delta = Math.sign(event.deltaY);
+    targetRotationY += delta * 1.5; // Update target rotation
+    activeIndex = (activeIndex + delta + buttonPoints.length) % buttonPoints.length;
+    wheelEventTriggered = true;
+}
+
+//renderer.domElement.addEventListener('wheel', onMouseWheel);
+
+renderer.setSize(window.innerWidth,window.innerHeight)
+renderer.physicallyCorrectLights = true;
+renderer.gammaOutput =  true;
+renderer.gammaFactor =  1;
+
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 4))
+renderer.shadowMap.enabled = true
+renderer.render(scene,camera)
+renderer.setClearColor( 0xffffff, 0)
+document.getElementById('model').appendChild( renderer.domElement );
+
+
+
+
+
+window.addEventListener('resize', () => {
+
+        // Adjust circle radius based on viewport size
+        radius = calculateRadius();
+        updateCirclePoints(); // Recalculate circle points
+    
+    sizes.width = window.innerWidth;
+    sizes.height = window.innerHeight;
+
+    camera.aspect = sizes.width / sizes.height;
+    camera.updateProjectionMatrix();
+
+    renderer.setSize(sizes.width, sizes.height);
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2))
+     updateCirclePoints();
+    positionButtons();
+    positionArrow(); 
+    adjustRootScale(); 
+    // renderer.render(scene, camera); // -> Not needed since it is called in animate()
+});
+
+updateCirclePoints();
+positionButtons();
+positionArrow(); 
+///
+s2.hover(
+    () => {
+    if(root1)
+        gsap.to(root1.rotation, { y: 0.75, duration: 1.5 });
+    //wheelEventTriggered = false;
+},
+() => { }
+);
+
+
+s1.hover(() => {
+    gsap.to
+    if(root1)
+        gsap.to(root1.rotation, { y: -0.5, duration: 1.5 });
+   // wheelEventTriggered = false;
+},
+() => { }
+);
+
+s3.hover(
+    () => {
+    if(root1)
+        gsap.to(root1.rotation, { y: 2.5, duration: 1.5 });
+   // wheelEventTriggered = false;
+},
+() => { }
+);
+
+s4.hover(
+    () => {
+    if(root1)
+        gsap.to(root1.rotation, { y: 3.5, duration: 1.5 });
+   // wheelEventTriggered = false;
+},
+() => { }
+);
+
+
+function animate(){
+    circle1.rotation.z += 0.007;
+requestAnimationFrame(animate);
+//if (root1) {
+    // Only interpolate rotation if the wheel event has been triggered
+  //  if (wheelEventTriggered) {
+  //      root1.rotation.y += (targetRotationY - root1.rotation.y) * rotationSpeed;
+  //  }
+//}
+updateCirclePoints();
+positionButtons();
+positionArrow(); 
+controls.update();
+renderer.render(scene,camera)
+}
+animate()
+
+
+updateCirclePoints();
+positionButtons();
+positionArrow(); 
+
+
+
+const next = document.querySelector('#next');
+const container2 = document.querySelector('#glcanvas');
+const bodiv = document.querySelector('#bo');
+const recdiv = document.querySelector('#rec');
+
+next.addEventListener('mouseover', () => {
+container1.style.filter = "brightness(1.4) blur(18px)";
+container1.style.transition = "filter 0.6s ease";
+container2.style.filter = "brightness(1.4) blur(18px)";
+container2.style.transition = "filter 0.6s ease";
+
+});
+
+
+next.addEventListener('mouseleave', () => {
+container1.style.filter = "brightness(1.8) grayscale(0.5) opacity(0.6) drop-shadow(4px 4px 6px rgba(255, 255, 255, 0.745))";
+container2.style.filter = "opacity(0.6) brightness(1.5)";
+
+});  
+
+
+bodiv.addEventListener('mouseover', () => {
+recdiv.style.filter = "brightness(1.4) blur(18px)";
+recdiv.style.transition = "filter 0.6s ease";
+});
+
+
+bodiv.addEventListener('mouseleave', () => {
+recdiv.style.filter = "";
+
+});
+
+
+
+var dotLimit = 2000;
+  var dots = [];
+onmousemove = function(e){
+ 
+  document.onmousemove = function(e) {
+    var dot = document.createElement('div');
+    dot.className = "dot";
+    dot.style.left = e.pageX + "px";
+    dot.style.top = e.pageY + "px";
+    document.body.appendChild(dot);
+    dots.push(dot);
+    if (dots.length > dotLimit) {
+      var oldestDot = dots.shift();
+      document.body.removeChild(oldestDot);
+    } 
+  };
+};
+
+
+
+<img src="./assets/Lof.png" alt="lofficiellogo"> 
+<img src="./assets/lab.png" alt="thelablogo">
+    <img src="./assets/swg.png" alt="swaglogo">
+    <img src="./assets/ug.png" alt="blulogo">
+    <img src="./assets/ini.png" alt="aaltounilogo"></img>
+
+
+    // Set initial properties for grid items
+gsap.set(gridItems, { opacity: 0, y: 50 });
+
+// Create a timeline for the staggered reveal animation
+const revealGrid = gsap.timeline({ paused: true });
+
+revealGrid.to(gridItems, {
+  opacity: 1,
+  y: 0,
+  duration: 0.6,
+  stagger: 0.2, // Stagger each item's animation by 0.2 seconds
+  ease: "power4.out",
+});
+
+
+revealGrid.play();
+
+// Hover Effect: Scale Animation on Hover
+gridItems.forEach(item => {
+  item.addEventListener('mouseenter', () => {
+    gsap.to(item, {
+      scale: 1.1,
+      duration: 0.3,
+      ease: "power2.out",
+    });
+  });
+
+  item.addEventListener('mouseleave', () => {
+    gsap.to(item, {
+      scale: 1,
+      duration: 0.3,
+      ease: "power2.in",
+    });
+  });
+});
+
+
+
+
+let activeIndex = 0;
+let activeIndex1 = 0;
+let activeIndex2 = 0;
+function switchButton(event) {
+    const buttons = document.querySelectorAll('.main1');
+    buttons[activeIndex].classList.remove('active'); 
+
+
+    if (event.type === 'wheel') {
+        //activeIndex = (activeIndex + (event.deltaY > 0 ? 1 : -1) + buttons.length) % buttons.length; 
+    } 
+    
+    else if (event.type === 'mouseover') {
+        activeIndex = Array.from(buttons).indexOf(event.target); 
+    }
+    buttons[activeIndex].classList.add('active'); 
+
+
+
+    const boxs = document.querySelectorAll('.main2');
+    boxs[activeIndex1].classList.remove('active'); 
+    if (event.type === 'wheel') {
+       // activeIndex1 = (activeIndex1 + (event.deltaY > 0 ? 1 : -1) + boxs.length) % boxs.length; 
+    } else if (event.type === 'mouseover') {
+        activeIndex1 = Array.from(buttons).indexOf(event.target); 
+    }
+    boxs[activeIndex1].classList.add('active'); 
+
+    const bebes = document.querySelectorAll('.bebe');
+    bebes[activeIndex2].classList.remove('active'); 
+    if (event.type === 'wheel') {
+       // activeIndex2 = (activeIndex2 + (event.deltaY > 0 ? 1 : -1) + bebes.length) % bebes.length; 
+    } else if (event.type === 'mouseover') {
+      activeIndex2 = Array.from(buttons).indexOf(event.target); 
+    }
+    bebes[activeIndex2].classList.add('active'); 
+
+
+    gsap.fromTo(bebes[activeIndex2], 
+      { y: 100, opacity: 0 }, 
+      { 
+          y: 0, 
+          opacity: 1, 
+          duration: 0.5, 
+          ease: "power2.out"
+      }
+  );
+
+    setTimeout(() => {
+        buttons[activeIndex].classList.add('active');
+        boxs[activeIndex1].classList.add('active');
+        bebes[activeIndex2].classList.add('active');
+    }, 20); 
+}
+
+
+//window.addEventListener('wheel', switchButton);
+
+const buttons = document.querySelectorAll('.main1');
+buttons.forEach(button => {
+    button.addEventListener('mouseover', switchButton);
+});
+
+
+
+
+let isHovering = false; // Flag to track hover state globally
+
+function autoSwitchButton() {
+    if (isHovering) return; // Skip the auto-switching if hovering
+
+    const buttons = document.querySelectorAll('.main1');
+    const boxs = document.querySelectorAll('.main2');
+    const bebes = document.querySelectorAll('.bebe');
+
+    buttons[activeIndex].classList.remove('active');
+    boxs[activeIndex1].classList.remove('active');
+    bebes[activeIndex2].classList.remove('active');
+
+    // Increment active index and loop back to 0 if it exceeds the length
+    activeIndex = (activeIndex + 1) % buttons.length;
+    activeIndex1 = (activeIndex1 + 1) % boxs.length;
+    activeIndex2 = (activeIndex2 + 1) % bebes.length;
+
+    buttons[activeIndex].classList.add('active');
+    boxs[activeIndex1].classList.add('active');
+    bebes[activeIndex2].classList.add('active');
+
+    gsap.fromTo(bebes[activeIndex2], 
+      { y: 100, opacity: 0 }, 
+      { 
+          y: 0, 
+          opacity: 1, 
+          duration: 0.5, 
+          ease: "power2.out"
+      });
+}
+
+setInterval(autoSwitchButton, 2000);
