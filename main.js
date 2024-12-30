@@ -284,7 +284,7 @@ const video = document.querySelectorAll('.mot');
 
 gsap.set(container1, { 
           opacity: 0, 
-          scale: 1.4,
+          scale: 1.2,
           blur: 20,
       });
 

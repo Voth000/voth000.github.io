@@ -244,11 +244,10 @@ function switchButton(event) {
 window.addEventListener('wheel', switchButton);
 
 
-<video class="mot" playsinline autoplay muted id="bgvideo" style="width:100%; height=100%" autoplay="autoPlay" loop="true" src="./3.mp4" alt="play1"> </video>
 
 <div id="vfx">
   <div class="mot" id="transtop"></div>
-  
+  <video class="mot" playsinline autoplay muted id="bgvideo" style="width:100%; height=100%" autoplay="autoPlay" loop="true" src="./3.mp4" alt="play1"> </video>
   <div class="mot" id="transbot"></div>
 </div>
 
@@ -800,3 +799,6 @@ function autoSwitchButton() {
 }
 
 setInterval(autoSwitchButton, 2000);
+
+
+background-image: url(./assets/0001.png);

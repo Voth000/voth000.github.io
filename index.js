@@ -89,6 +89,9 @@ class SceneManager {
             this.adjustRootScale();
             this.root1.rotation.y = -0.7;
             this.root1.rotation.x = 0.05;
+            
+            this.root1.position.y = -4;
+           
             this.root1.name = "root1";
             this.root1.visible = true;
  // Advanced model optimization
@@ -185,7 +188,6 @@ class SceneManager {
     }
     
 
-
     setupHoverEffects() {
         const hoverRotations = {
             's1': -0.7,
@@ -194,6 +196,7 @@ class SceneManager {
             's4': 3.5
         };
     
+        // Hover for the main1 buttons
         Object.keys(hoverRotations).forEach(selector => {
             $(`#${selector}`).hover(
                 () => {
@@ -204,12 +207,11 @@ class SceneManager {
                         }
                         gsap.to(this.root1.rotation, { y: hoverRotations[selector], duration: 2 });
     
-                        // Set the button and box as active
+                        // Activate corresponding elements
                         const buttons = document.querySelectorAll('.main1');
                         const boxs = document.querySelectorAll('.main2');
                         const bebes = document.querySelectorAll('.bebe');
     
-                        // Reset all boxes, buttons, and bebes
                         buttons.forEach(button => button.classList.remove('active'));
                         boxs.forEach(box => box.classList.remove('active'));
                         bebes.forEach(bebe => bebe.classList.remove('active'));
@@ -227,9 +229,39 @@ class SceneManager {
             );
         });
     
-        this.startHoverLoop(); // Start the loop initially
-    }
+         // Hover for the main2 elements
+         const main2Container = document.querySelector('.main2');
+         const main2Elements = document.querySelectorAll('.main2 .op1');
+
+         main2Elements.forEach(element => {
+            element.addEventListener('mouseenter', () => {
+                this.isHovering = true; // Stop auto-switching
+                if (this.autoLoopTimeout) {
+                    clearTimeout(this.autoLoopTimeout); // Prevent auto-loop while hovering
+                }
     
+                // Deactivate all and activate the hovered element
+                main2Elements.forEach(el => el.classList.remove('active'));
+                element.classList.add('active');
+            });
+    
+            element.addEventListener('mouseleave', () => {
+                this.isHovering = false; // Resume auto-switching
+                this.startHoverLoop(); // Restart auto-loop
+            });
+        });
+ // Handle when mouse leaves the entire main2 container
+ if (main2Container) {
+    main2Container.addEventListener('mouseleave', () => {
+        main2Elements.forEach(el => el.classList.remove('active')); // Clear active state
+        this.isHovering = false; // Reset hover state
+        this.startHoverLoop(); // Restart auto-loop
+    });
+}
+     
+         this.startHoverLoop(); // Start the loop initially
+     }
+     
 
     resetButtonActiveState() {
         // Reset the active state of all buttons
@@ -239,6 +271,12 @@ class SceneManager {
         });
     }
 
+
+
+
+
+
+    
     startHoverLoop() {
         let currentHoverIndex = 2;
         const hoverRotations = {
@@ -288,6 +326,9 @@ class SceneManager {
         buttons[this.activeIndex].classList.add('active');
         boxs[this.activeIndex].classList.add('active');
         bebes[this.activeIndex].classList.add('active');
+
+        this.autoLoopTimeout = setTimeout(() => this.autoSwitchButton(), 2000);
+
     
         // Animate the new "bebe" element
         gsap.fromTo(bebes[this.activeIndex], 
@@ -347,7 +388,7 @@ class SceneManager {
     adjustRootScale() {
         if (this.root1) {
             const isSmallScreen = window.innerWidth < 500;
-            this.root1.scale.set(isSmallScreen ? 3 : 5, isSmallScreen ? 3 : 5, isSmallScreen ? 3 : 5);
+            this.root1.scale.set(isSmallScreen ? 2 : 4, isSmallScreen ? 2 : 4, isSmallScreen ? 2 : 4);
             this.root1.position.set(
                 isSmallScreen ? 0 : -0.5, 
                 isSmallScreen ? -3 : -6.5, 
