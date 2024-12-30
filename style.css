@@ -365,11 +365,12 @@ video {
     box-shadow: var(--box2);
 }
 .tit {
+    box-shadow: rgb(255 255 255 / 27%) 2px 4px 13.6px 1px, rgb(212 212 212 / 63%) 2px 3px 11.5px -1px;
     padding: 0em 0.25em;
-    font-size: 18px;
-    font-family: 'h2', monospace;
-    font-weight: 400;
-    box-shadow: var(--boxshadow);
+    font-size: 14px;
+    font-family: 'Unbounded', monospace;
+    font-weight: 200;
+   
     background: var(--bgtrans);
     color: rgb(104, 104, 104);
     display: flex;
@@ -379,6 +380,7 @@ justify-content: space-between;
 backdrop-filter: var(--filter)
 
 }
+
 
 button:hover {
     cursor: pointer;
@@ -957,6 +959,17 @@ border-left: 0.5px solid var(--new);
     flex-wrap: wrap;
 }
 
+.tit #tag {
+    background: rgb(255 255 255 / 30%);
+    /* border-bottom: 1px solid rgb(255 255 255); */
+    box-shadow: rgb(255 255 255 / 27%) 2px 4px 13.6px 1px, rgb(212 212 212 / 63%) 2px 3px 11.5px -1px;
+   
+    backdrop-filter: blur(1px);
+    font-weight: 200;
+    padding: 4px;
+    font-size: 12px;
+    font-family: 'Unbounded', monospace;
+}
 
 
 .boagrid {
@@ -1104,7 +1117,7 @@ b {
     
     z-index: 4;
     max-width: 160px;
-    max-height: 260px;
+    max-height: 100px;
     display: flex;
  object-fit: contain;
         padding: 0px 4px;

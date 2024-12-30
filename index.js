@@ -15,6 +15,7 @@ class SceneManager {
         this.activeIndex = 0;
         this.activeIndex1 = 0; // Manage active box index
         this.activeIndex2 = 0; // Manage active bebe index
+        this.activeIndex3 = 0;
         this.points = [];
         this.isHovering = false; // Track hover state
         this.autoLoopTimeout = null; // Store timeout reference
@@ -232,6 +233,7 @@ class SceneManager {
          // Hover for the main2 elements
          const main2Container = document.querySelector('.main2');
          const main2Elements = document.querySelectorAll('.main2 .op1');
+         
 
          main2Elements.forEach(element => {
             element.addEventListener('mouseenter', () => {

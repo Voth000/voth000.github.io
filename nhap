@@ -802,3 +802,9 @@ setInterval(autoSwitchButton, 2000);
 
 
 background-image: url(./assets/0001.png);
+
+<div>
+                <div id="tag">Creative-Coding</div>
+                <div id="tag">UI Design</div>
+                
+            </div>

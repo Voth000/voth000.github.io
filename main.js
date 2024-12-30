@@ -142,58 +142,8 @@ function applyH1GlitchEffect() {
 
 // Call the function when the page loads
 window.addEventListener('load', applyH1GlitchEffect);
-let activeIndex = 0;
-let activeIndex1 = 0;
-let activeIndex2 = 0;
-
-function switchButton(event) {
-    const buttons = document.querySelectorAll('.main1');
-    buttons[activeIndex].classList.remove('active');
-
-    if (event && event.type === 'mouseover') {
-        activeIndex = Array.from(buttons).indexOf(event.target);
-    }
-    buttons[activeIndex].classList.add('active');
-
-    const boxs = document.querySelectorAll('.main2');
-    boxs[activeIndex1].classList.remove('active');
-
-    if (event && event.type === 'mouseover') {
-        activeIndex1 = Array.from(buttons).indexOf(event.target);
-    }
-    boxs[activeIndex1].classList.add('active');
-
-    const bebes = document.querySelectorAll('.bebe');
-    bebes[activeIndex2].classList.remove('active');
-
-    if (event && event.type === 'mouseover') {
-        activeIndex2 = Array.from(buttons).indexOf(event.target);
-    }
-    bebes[activeIndex2].classList.add('active');
-
-    gsap.fromTo(bebes[activeIndex2], 
-      { y: 400, opacity: 0 }, 
-      { 
-          y: 0, 
-          opacity: 1, 
-          duration: 1.5, 
-          ease: "power2.out"
-      }
-  );
-
-    setTimeout(() => {
-        buttons[activeIndex].classList.add('active');
-        boxs[activeIndex1].classList.add('active');
-        bebes[activeIndex2].classList.add('active');
-    }, 20);
-}
 
 
-
-const buttons = document.querySelectorAll('.main1');
-buttons.forEach(button => {
-    button.addEventListener('mouseover', switchButton);
-});
 
 
 
