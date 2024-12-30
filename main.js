@@ -2,7 +2,7 @@ gsap.registerPlugin(ScrollTrigger);
 const boDiv = document.querySelector('#bo');
 const container2 = document.querySelector('#glcanvas');
 const next = document.querySelector('#next');
-      const gridContainer = document.getElementById('boall');
+const gridContainer = document.getElementById('boall');
 const gridItems = document.querySelectorAll('.boagrid');
 
 
