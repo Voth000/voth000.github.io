@@ -27,7 +27,7 @@
   
 
   :root {
-    --new: #000000;;
+    --new: #b3b3b3;
     --border-radius: 4em;
     --black: black;
 --navtext: #ffffff;
@@ -44,7 +44,7 @@
     --t2: 16px;
     --bold: 800;
     --bgtrans: linear-gradient(180deg, rgba(247, 247, 247, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%);
-    --test:linear-gradient(rgba(255, 255, 255, 0.831) 5%, 20%, rgb(105 105 105) 65%);
+    --test:linear-gradient(rgba(255, 255, 255, 0.831) 5%, 20%, rgb(180 180 180) 65%);
     --test2: linear-gradient(rgba(255, 255, 255, 0.052) 5%, 90%, rgba(135, 135, 135, 0.808) 10%);
 --box: 4px 4px 4px 0px rgba(105, 105, 105, 0.448);
 --box2: 2px 2px 2px 0px rgba(105, 105, 105, 0.363);
@@ -171,7 +171,7 @@ visibility: hidden;
 }
 
 button {
-    border: 0.5px solid grey;
+    border: 0.5px solid #cbcbcb;
     border-radius: 0px;
 padding: 4px 8px;
 background-color: var(--grey2);
@@ -495,7 +495,9 @@ background-size: cover;
  *::-webkit-scrollbar-thumb {
     background-color: #9b9b9b;
     border-radius: 0px;
-    border: 3px dashed #ffffff;
+    border: 2px dashed #ffffff;
+    
+
   }
 
   #model {
@@ -833,14 +835,14 @@ opacity: 0;
     background-clip: text;
     -webkit-background-clip: text;
     -webkit-text-fill-color: #ffffff3d;
-    text-shadow: 0px 4px 4px rgb(64 64 64 / 77%);
+    text-shadow: 0px 4px 4px rgb(116 116 116 / 77%);
 }
 
 
 
 
 #glcanvas {
-    filter: opacity(0.9) brightness(1.3) ;
+    filter: opacity(1) brightness(1.1) ;
     outline:0;
     top:0;
     z-index: 0;
@@ -1050,7 +1052,7 @@ border-left: 0.5px solid var(--new);
 #new span {
     font-family: 'Unbounded', monospace;
     background: none;
-    color: var(--new);
+    color: var(--black);
     font-weight: 200;
     font-size: 14px;
     /* border: 0.5px solid #7b7b7b; */
@@ -1101,7 +1103,7 @@ border-left: 0.5px solid var(--new);
     display: flex;
     /* align-items: end; */
     gap: 4px;
-    color: var(--new);;
+    color: var(--black);
     height: -webkit-fill-available;
     align-content: center;
 }
@@ -1131,11 +1133,10 @@ b {
 
 .push {
     border-radius: 50%;
-    filter: brightness(1.1);
+    filter: brightness(1.1) drop-shadow(1px 16px 20px rgb(157, 255, 0));
     box-shadow: rgb(255 255 255 / 67%) 4px 24px 13.6px 1px, rgb(212 212 212 / 67%) 2px 3px 11.5px 4px;
   font-size: 24px;
-    font-weight: 600;
-    font-family: 'Unbounded';
+  font-family: 'p1';
     background: radial-gradient(rgba(202, 202, 202, 0.768) 0%, rgba(255, 255, 255, 0.807) 10%, rgb(229, 229, 229) 30%, rgba(255, 255, 255, 0.352) 90%, rgba(255, 255, 255, 0.835) 100%);
     /* background-color: #eeeeee; */
     color: rgb(0, 0, 0);
@@ -1151,7 +1152,7 @@ background-blend-mode: darken, luminosity;
 }
 
 .push:hover {
-    filter: brightness(1.8);
+    filter: brightness(1.8) drop-shadow(1px 16px 20px rgb(224, 124, 255));
    transform:  translateY(10px);
    box-shadow: rgb(255 255 255 / 67%) 4px 4px 13.6px 1px, rgb(212 212 212 / 67%) 2px 3px 11.5px 4px;
 }

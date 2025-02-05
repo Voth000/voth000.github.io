@@ -961,7 +961,7 @@ class Logger
             console.error("[" + this.initiator + "]", ...arguments);
         }
 
-        if (!CABLES.UI && this._options && this._options.onError)
+        if (this._options && this._options.onError)
         {
             this._options.onError(this.initiator, ...arguments);
             // console.log("emitevent onerror...");
@@ -1503,7 +1503,7 @@ const EventTarget = function ()
             const event = this._listeners[which];
             if (!event)
             {
-                this._log.log("could not find event...", which, this);
+                this._log.log("removeEvent: could not find event...", which, this);
                 return;
             }
 
@@ -2617,6 +2617,12 @@ Port.prototype.set = Port.prototype.setValue = function (v)
 {
     if (v === undefined) v = null;
 
+
+    if (CABLES.UI && CABLES.UI.showDevInfos)
+        if (this.direction == CONSTANTS.PORT.PORT_DIR_OUT && this.type == CONSTANTS.OP.OP_PORT_TYPE_OBJECT && v && !this.forceRefChange)
+            this._log.warn("object port uses .set", this.name, this.op.objName);
+
+
     if (this._op.enabled && !this.crashed)
     {
         if (v !== this.value || this.changeAlways || this.type == CONSTANTS.OP.OP_PORT_TYPE_TEXTURE || this.type == CONSTANTS.OP.OP_PORT_TYPE_ARRAY)
@@ -2875,10 +2881,17 @@ Port.prototype.removeLink = function (link)
 
     if (CABLES.UI && this._op.checkLinkTimeWarnings) this._op.checkLinkTimeWarnings();
 
-    if (this.onLinkChanged) this.onLinkChanged();
-    this.emitEvent("onLinkChanged");
-    this.emitEvent("onLinkRemoved");
-    this._op.emitEvent("onLinkChanged");
+    try
+    {
+        if (this.onLinkChanged) this.onLinkChanged();
+        this.emitEvent("onLinkChanged");
+        this.emitEvent("onLinkRemoved");
+        this._op.emitEvent("onLinkChanged");
+    }
+    catch (e)
+    {
+        this._log.error(e);
+    }
 };
 
 /**
@@ -2910,9 +2923,16 @@ Port.prototype.addLink = function (l)
     this.links.push(l);
     if (CABLES.UI && this._op.checkLinkTimeWarnings) this._op.checkLinkTimeWarnings();
 
-    if (this.onLinkChanged) this.onLinkChanged();
-    this.emitEvent("onLinkChanged");
-    this._op.emitEvent("onLinkChanged");
+    try
+    {
+        if (this.onLinkChanged) this.onLinkChanged();
+        this.emitEvent("onLinkChanged");
+        this._op.emitEvent("onLinkChanged");
+    }
+    catch (e)
+    {
+        this._log.error(e);
+    }
 };
 
 /**
@@ -3013,7 +3033,7 @@ Port.prototype.trigger = function ()
 
             if (portTriggered.op.onError) portTriggered.op.onError(ex);
         }
-        this._log.error("exception in port: " + portTriggered.op.name, portTriggered.op);
+        this._log.error("exception in port: ", portTriggered.name, portTriggered.op.name, portTriggered.op);
         this._log.error(ex);
     }
 };
@@ -3860,7 +3880,7 @@ const Op = function ()
     Op.prototype.checkMainloopExists = function ()
     {
         if (!CABLES.UI) return;
-        if (!this.patch.cgl.mainloopOp) this.setUiError("nomainloop", "patch should have a mainloop to use this op");
+        if (!this.patch.tempData.mainloopOp) this.setUiError("nomainloop", "patch should have a mainloop to use this op");
         else this.setUiError("nomainloop", null);
     };
 
@@ -3901,7 +3921,8 @@ const Op = function ()
 
     Op.prototype.isSubPatchOp = function ()
     {
-        if (this.storage) return (this.storage.subPatchVer || 0);
+        if (this.patchId && this.storage) return (this.storage.subPatchVer || this.storage.blueprintVer || 0);
+        return false;
     };
 
     const _setUiAttrib = function (newAttribs)
@@ -4790,7 +4811,7 @@ const Op = function ()
                 "display": "texture"
             })
         );
-        if (v !== undefined) p.set(v || CGL.Texture.getEmptyTexture(this.patch.cgl));
+        if (v !== undefined) p.setRef(v || CGL.Texture.getEmptyTexture(this.patch.cgl));
 
         p.ignoreValueSerialize = true;
         return p;
@@ -6100,14 +6121,31 @@ class CgUniform
         }
         else this._value = _value;
 
+
+        if (this._value == undefined)
+        {
+            console.log("value undefined", this);
+            this._value = 0;
+        }
+
         this.setValue(this._value);
+
         this.needsUpdate = true;
     }
-
 
     getType()
     {
         return this._type;
+    }
+
+    get type()
+    {
+        return this._type;
+    }
+
+    get name()
+    {
+        return this._name;
     }
 
     getName()
@@ -8002,8 +8040,8 @@ class BoundingBox
 
     _init()
     {
-        this._max = [-Number.MAX_VALUE, -Number.MAX_VALUE, -Number.MAX_VALUE];
-        this._min = [Number.MAX_VALUE, Number.MAX_VALUE, Number.MAX_VALUE];
+        this._max = [-0, -0, -0];
+        this._min = [0, 0, 0];
         this._center = [0, 0, 0];
         this._size = [0, 0, 0];
         this._maxAxis = 0.0;
@@ -8102,17 +8140,7 @@ class BoundingBox
         else
         {
             for (let i = 0; i < geom.vertices.length; i += 3)
-                // if (geom.vertices[i] == geom.vertices[i] || geom.vertices[i] != null)
-                // {
-            // if(mat)
-            // {
                 this.applyPos(geom.vertices[i], geom.vertices[i + 1], geom.vertices[i + 2]);
-            // }
-            // else
-            // {
-            //     this.applyPos(geom.vertices[i + 0],geom.vertices[i + 1],geom.vertices[i + 2]);
-            // }
-                // }
         }
         this.calcCenterSize();
     }
@@ -8166,9 +8194,8 @@ class BoundingBox
     calcCenterSize()
     {
         if (this._first) return;
-        // this._size[0]=Math.abs(this._min[0])+Math.abs(this._max[0]);
-        // this._size[1]=Math.abs(this._min[1])+Math.abs(this._max[1]);
-        // this._size[2]=Math.abs(this._min[2])+Math.abs(this._max[2]);
+
+
         this._size[0] = this._max[0] - this._min[0];
         this._size[1] = this._max[1] - this._min[1];
         this._size[2] = this._max[2] - this._min[2];
@@ -10367,7 +10394,7 @@ TextureEffect.checkOpInEffect = function (op, minver)
 
     if (!op.patch.cgl.currentTextureEffect && (!op.uiAttribs.uierrors || op.uiAttribs.uierrors.length == 0))
     {
-        op.setUiError("texeffect", "This op must be a child of an ImageCompose op! More infos <a href=\"https://docs.cables.gl/image_composition/image_composition.html\" target=\"_blank\">here</a>. ", 1);
+        op.setUiError("texeffect", "This op must be a child of an ImageCompose op! More infos <a href=\"https://cables.gl/docs/image_composition/image_composition.html\" target=\"_blank\">here</a>. ", 1);
         return false;
     }
 
@@ -10799,6 +10826,10 @@ class CgShader extends EventTarget
         this.id = simpleId();
         this._isValid = true;
         this._defines = [];
+
+        this._moduleNames = [];
+        this._modules = [];
+        this._moduleNumId = 0;
     }
 
     /**
@@ -10917,6 +10948,155 @@ class CgShader extends EventTarget
                 return;
             }
         }
+    }
+
+
+    hasModule(modId)
+    {
+        for (let i = 0; i < this._modules.length; i++)
+        {
+            if (this._modules[i].id == modId) return true;
+        }
+        return false;
+    }
+
+    setModules(names)
+    {
+        this._moduleNames = names;
+    }
+
+
+    /**
+     * remove a module from shader
+     * @function removeModule
+     * @memberof Shader
+     * @instance
+     * @param {shaderModule} mod the module to be removed
+     */
+    removeModule(mod)
+    {
+        for (let i = 0; i < this._modules.length; i++)
+        {
+            if (mod && mod.id)
+            {
+                if (this._modules[i].id == mod.id || !this._modules[i])
+                {
+                    let found = true;
+                    while (found)
+                    {
+                        found = false;
+                        for (let j = 0; j < this._uniforms.length; j++)
+                        {
+                            if (this._uniforms[j].getName().startsWith(mod.prefix))
+                            {
+                                this._uniforms.splice(j, 1);
+                                found = true;
+                                continue;
+                            }
+                        }
+                    }
+
+                    this._needsRecompile = true;
+                    this.setWhyCompile("remove module " + mod.title);
+                    this._modules.splice(i, 1);
+                    break;
+                }
+            }
+        }
+    }
+
+
+    getNumModules()
+    {
+        return this._modules.length;
+    }
+
+
+    getCurrentModules() { return this._modules; }
+
+
+    /**
+     * add a module
+     * @function addModule
+     * @memberof Shader
+     * @instance
+     * @param {shaderModule} mod the module to be added
+     * @param {shaderModule} [sibling] sibling module, new module will share the same group
+     */
+    addModule(mod, sibling)
+    {
+        if (this.hasModule(mod.id)) return;
+        if (!mod.id) mod.id = CABLES.simpleId();
+        if (!mod.numId) mod.numId = this._moduleNumId;
+        if (!mod.num)mod.num = this._modules.length;
+        if (sibling && !sibling.group) sibling.group = simpleId();
+
+        if (!mod.group)
+            if (sibling) mod.group = sibling.group;
+            else mod.group = simpleId();
+
+        mod.prefix = "mod" + mod.group + "_";
+        this._modules.push(mod);
+
+        this._needsRecompile = true;
+        this.setWhyCompile("add module " + mod.title);
+        this._moduleNumId++;
+
+        return mod;
+    }
+
+    getAttributeSrc(mod, srcHeadVert, srcVert)
+    {
+        if (mod.attributes)
+            for (let k = 0; k < mod.attributes.length; k++)
+            {
+                const r = this._getAttrSrc(mod.attributes[k], false);
+                if (r.srcHeadVert)srcHeadVert += r.srcHeadVert;
+                if (r.srcVert)srcVert += r.srcVert;
+            }
+
+        return { "srcHeadVert": srcHeadVert, "srcVert": srcVert };
+    }
+
+    replaceModuleSrc()
+    {
+        let srcHeadVert = "";
+
+        for (let j = 0; j < this._modules.length; j++)
+        {
+            const mod = this._modules[j];
+            if (mod.name == this._moduleNames[i])
+            {
+                srcHeadVert += "\n//---- MOD: group:" + mod.group + ": idx:" + j + " - prfx:" + mod.prefix + " - " + mod.title + " ------\n";
+
+                srcVert += "\n\n//---- MOD: " + mod.title + " / " + mod.priority + " ------\n";
+
+
+                if (mod.getAttributeSrc)
+                {
+                    const r = getAttributeSrc(mod, srcHeadVert, srcVert);
+                    if (r.srcHeadVert)srcHeadVert += r.srcHeadVert;
+                    if (r.srcVert)srcVert += r.srcVert;
+                }
+
+
+                srcHeadVert += mod.srcHeadVert || "";
+                srcVert += mod.srcBodyVert || "";
+
+                srcHeadVert += "\n//---- end mod ------\n";
+
+                srcVert += "\n//---- end mod ------\n";
+
+                srcVert = srcVert.replace(/{{mod}}/g, mod.prefix);
+                srcHeadVert = srcHeadVert.replace(/{{mod}}/g, mod.prefix);
+
+                srcVert = srcVert.replace(/MOD_/g, mod.prefix);
+                srcHeadVert = srcHeadVert.replace(/MOD_/g, mod.prefix);
+            }
+        }
+
+
+        vs = vs.replace("{{" + this._moduleNames[i] + "}}", srcVert);
     }
 }
 
@@ -11055,9 +11235,6 @@ class Shader extends CgShader
         this.srcFrag = getDefaultFragmentShader();
         this.lastCompile = 0;
 
-        this._moduleNames = [];
-        this._modules = [];
-        this._moduleNumId = 0;
 
         this._libs = [];
         this._structNames = [];
@@ -11628,10 +11805,11 @@ class Shader extends CgShader
         let srcHeadVert = "";
         let srcHeadFrag = "";
 
-        this._modules.sort(function (a, b)
-        {
-            return a.group - b.group;
-        });
+        // testing if this breaks things...
+        // this._modules.sort(function (a, b)
+        // {
+        //     return a.group - b.group;
+        // });
 
         this._modules.sort(function (a, b)
         {
@@ -11706,6 +11884,8 @@ class Shader extends CgShader
             vs = vs.replace("{{" + this._moduleNames[i] + "}}", srcVert);
             fs = fs.replace("{{" + this._moduleNames[i] + "}}", srcFrag);
         }
+
+
         vs = vs.replace("{{MODULES_HEAD}}", srcHeadVert);
         fs = fs.replace("{{MODULES_HEAD}}", srcHeadFrag);
 
@@ -11831,7 +12011,7 @@ class Shader extends CgShader
         }
 
         if (this._objectIdUniform)
-            this._cgl.gl.uniform1f(this._objectIdUniform, ++this._cgl.frameStore.objectIdCounter);
+            this._cgl.gl.uniform1f(this._objectIdUniform, ++this._cgl.tempData.objectIdCounter);
 
         if (this._materialIdUniform)
             this._cgl.gl.uniform1f(this._materialIdUniform, this._materialId);
@@ -11901,98 +12081,6 @@ class Shader extends CgShader
     {
     };
 
-    /**
-     * remove a module from shader
-     * @function removeModule
-     * @memberof Shader
-     * @instance
-     * @param {shaderModule} mod the module to be removed
-     */
-    removeModule(mod)
-    {
-        for (let i = 0; i < this._modules.length; i++)
-        {
-            if (mod && mod.id)
-            {
-                if (this._modules[i].id == mod.id || !this._modules[i])
-                {
-                    let found = true;
-                    while (found)
-                    {
-                        found = false;
-                        for (let j = 0; j < this._uniforms.length; j++)
-                        {
-                            if (this._uniforms[j].getName().startsWith(mod.prefix))
-                            {
-                                this._uniforms.splice(j, 1);
-                                found = true;
-                                continue;
-                            }
-                        }
-                    }
-
-                    this._needsRecompile = true;
-                    this.setWhyCompile("remove module " + mod.title);
-                    this._modules.splice(i, 1);
-                    break;
-                }
-            }
-        }
-    };
-
-
-    getNumModules()
-    {
-        return this._modules.length;
-    };
-
-
-    getCurrentModules() { return this._modules; };
-
-
-    /**
-     * add a module
-     * @function addModule
-     * @memberof Shader
-     * @instance
-     * @param {shaderModule} mod the module to be added
-     * @param {shaderModule} [sibling] sibling module, new module will share the same group
-     */
-    addModule(mod, sibling)
-    {
-        if (this.hasModule(mod.id)) return;
-        if (!mod.id) mod.id = CABLES.simpleId();
-        if (!mod.numId) mod.numId = this._moduleNumId;
-        if (!mod.num)mod.num = this._modules.length;
-        if (sibling && !sibling.group) sibling.group = simpleId();
-
-        if (!mod.group)
-            if (sibling) mod.group = sibling.group;
-            else mod.group = simpleId();
-
-        mod.prefix = "mod" + mod.group + "_";
-        this._modules.push(mod);
-
-        this._needsRecompile = true;
-        this.setWhyCompile("add module " + mod.title);
-        this._moduleNumId++;
-
-        return mod;
-    };
-
-    hasModule(modId)
-    {
-        for (let i = 0; i < this._modules.length; i++)
-        {
-            if (this._modules[i].id == modId) return true;
-        }
-        return false;
-    };
-
-    setModules(names)
-    {
-        this._moduleNames = names;
-    };
 
     dispose()
     {
@@ -12465,12 +12553,12 @@ class Shader extends CgShader
     {
         if (!uniform)
         {
-            console.log("no uniform given to texturestack", uniform);
+            // console.log("pushtexture: no uniform given to texturestack", "shader:"+this._name,uniform,t,type);
             return;
         }
         if (!t)
         {
-            console.log("no tex...");
+            // if(uniform)this._log.warn("pushtexture: no tex","shader:"+this._name," uniform:"+uniform.name);
             return;
         }
         if (!t.hasOwnProperty("tex") && !(t instanceof WebGLTexture))
@@ -13164,14 +13252,12 @@ MatrixStack.prototype.length = function ()
 
 
 
-
-// const CGState ()
 class CGState extends Events
 {
     constructor(_patch)
     {
         super();
-        this.frameStore = this.frameStore || {};
+        this.tempData = this.frameStore = this.frameStore || {};
         // this.canvas = null;
 
         this.fpsCounter = new CABLES.CG.FpsCounter();
@@ -13595,8 +13681,6 @@ class Context extends CGState
     constructor(_patch)
     {
         super(_patch);
-        // EventTarget.apply(this);
-        // CGState.apply(this);
 
         this.gApi = CG.GAPI_WEBGL;
         this.aborted = false;
@@ -13621,7 +13705,6 @@ class Context extends CGState
         this._isSafariCrap = false;
 
         this.temporaryTexture = null;
-        this.frameStore = {};
         this._onetimeCallbacks = [];
         this.gl = null;
 
@@ -13692,13 +13775,9 @@ class Context extends CGState
         this.mMatrix = m;
     }
 
-
     _setCanvas(canv)
     {
-        if (!canv)
-        {
-            this._log.stack("_setCanvas undef");
-        }
+        if (!canv) this._log.stack("_setCanvas undef");
 
         if (!this.patch.config.canvas) this.patch.config.canvas = {};
         if (!this.patch.config.canvas.hasOwnProperty("preserveDrawingBuffer")) this.patch.config.canvas.preserveDrawingBuffer = false;
@@ -13977,9 +14056,9 @@ class Context extends CGState
     // shader stack
     getShader()
     {
-        if (this._currentShader) if (!this.frameStore || ((this.frameStore.renderOffscreen === true) == this._currentShader.offScreenPass) === true) return this._currentShader;
+        if (this._currentShader) if (!this.tempData || ((this.tempData.renderOffscreen === true) == this._currentShader.offScreenPass) === true) return this._currentShader;
 
-        for (let i = this._shaderStack.length - 1; i >= 0; i--) if (this._shaderStack[i]) if (this.frameStore.renderOffscreen == this._shaderStack[i].offScreenPass) return this._shaderStack[i];
+        for (let i = this._shaderStack.length - 1; i >= 0; i--) if (this._shaderStack[i]) if (this.tempData.renderOffscreen == this._shaderStack[i].offScreenPass) return this._shaderStack[i];
     }
 
     getDefaultShader()
@@ -13998,17 +14077,17 @@ class Context extends CGState
 
     pushShader(shader)
     {
-        if (this.frameStore.forceShaderMods)
+        if (this.tempData.forceShaderMods)
         {
-            for (let i = 0; i < this.frameStore.forceShaderMods.length; i++)
+            for (let i = 0; i < this.tempData.forceShaderMods.length; i++)
             {
-                // if (!currentShader.forcedMod && currentShader != this.frameStore.forceShaderMods[i])
+                // if (!currentShader.forcedMod && currentShader != this.tempData.forceShaderMods[i])
                 // {
-                //     currentShader.forcedMod = this.frameStore.forceShaderMods[i];
-                shader = this.frameStore.forceShaderMods[i].bind(shader, false);
+                //     currentShader.forcedMod = this.tempData.forceShaderMods[i];
+                shader = this.tempData.forceShaderMods[i].bind(shader, false);
                 // }
                 // return currentShader;
-                // if (this.frameStore.forceShaderMods[i].currentShader() && shader != this.frameStore.forceShaderMods[i].currentShader().shader)
+                // if (this.tempData.forceShaderMods[i].currentShader() && shader != this.tempData.forceShaderMods[i].currentShader().shader)
             }
         }
 
@@ -14026,12 +14105,12 @@ class Context extends CGState
      */
     setPreviousShader()
     {
-        if (this.frameStore.forceShaderMods)
+        if (this.tempData.forceShaderMods)
         {
-            for (let i = 0; i < this.frameStore.forceShaderMods.length; i++)
+            for (let i = 0; i < this.tempData.forceShaderMods.length; i++)
             {
                 // const a =
-                this.frameStore.forceShaderMods[i].unbind(false);
+                this.tempData.forceShaderMods[i].unbind(false);
                 // if (a) return;
                 // this.popShader();
             }
@@ -14724,7 +14803,7 @@ Context.prototype.glGetAttribLocation = function (prog, name)
  */
 Context.prototype.shouldDrawHelpers = function (op)
 {
-    if (this.frameStore.shadowPass) return false;
+    if (this.tempData.shadowPass) return false;
     if (!op.patch.isEditorMode()) return false;
 
     // const fb = this.getCurrentFrameBuffer();
@@ -14968,14 +15047,18 @@ class PatchVariable extends Events
  * });
  */
 
-const Patch = function (cfg)
+class Patch extends EventTarget
 {
-    EventTarget.apply(this);
+// const Patch(cfg)
+    constructor(cfg)
+    {
+        super();
+        // EventTarget.apply(this);
 
-    this._log = new Logger("core_patch", { "onError": cfg.onError });
-    this.ops = [];
-    this.settings = {};
-    this.config = cfg ||
+        this._log = new Logger("core_patch", { "onError": cfg.onError });
+        this.ops = [];
+        this.settings = {};
+        this.config = cfg ||
         {
             "glCanvasResizeToWindow": false,
             "prefixAssetPath": "",
@@ -14987,251 +15070,250 @@ const Patch = function (cfg)
             "onPatchLoaded": null,
             "fpsLimit": 0
         };
-    this.timer = new Timer();
-    this.freeTimer = new Timer();
-    this.animFrameOps = [];
-    this.animFrameCallbacks = [];
-    this.gui = false;
-    CABLES.logSilent = this.silent = true;
-    this.profiler = null;
-    this.aborted = false;
-    this._crashedOps = [];
-    this._renderOneFrame = false;
-    this._animReq = null;
-    this._opIdCache = {};
-    this._triggerStack = [];
-    this.storeObjNames = false; // remove after may release
+        this.timer = new Timer();
+        this.freeTimer = new Timer();
+        this.animFrameOps = [];
+        this.animFrameCallbacks = [];
+        this.gui = false;
+        CABLES.logSilent = this.silent = true;
+        this.profiler = null;
+        this.aborted = false;
+        this._crashedOps = [];
+        this._renderOneFrame = false;
+        this._animReq = null;
+        this._opIdCache = {};
+        this._triggerStack = [];
+        this.storeObjNames = false; // remove after may release
 
-    this.loading = new LoadingStatus(this);
+        this.loading = new LoadingStatus(this);
 
-    this._volumeListeners = [];
-    this._paused = false;
-    this._frameNum = 0;
-    // this.instancing = new Instancing();
-    this.onOneFrameRendered = null;
-    this.namedTriggers = {};
+        this._volumeListeners = [];
+        this._paused = false;
+        this._frameNum = 0;
+        this.onOneFrameRendered = null;
+        this.namedTriggers = {};
 
-    this._origData = null;
-    this._frameNext = 0;
-    this._frameInterval = 0;
-    this._lastFrameTime = 0;
-    this._frameWasdelayed = true;
-    this.frameStore = {};
-    this.deSerialized = false;
-    this.reqAnimTimeStamp = 0;
+        this._origData = null;
+        this._frameNext = 0;
+        this._frameInterval = 0;
+        this._lastFrameTime = 0;
+        this._frameWasdelayed = true;
+        this.tempData = this.frameStore = {};
+        this.deSerialized = false;
+        this.reqAnimTimeStamp = 0;
 
-    this.cgCanvas = null;
+        this.cgCanvas = null;
 
-    if (!(function () { return !this; }())) console.log("not in strict mode: core patch");
+        if (!(function () { return !this; }())) console.log("not in strict mode: core patch");
 
-    this._isLocal = document.location.href.indexOf("file:") === 0;
+        this._isLocal = document.location.href.indexOf("file:") === 0;
 
-    if (this.config.hasOwnProperty("silent")) this.silent = CABLES.logSilent = this.config.silent;
-    if (!this.config.hasOwnProperty("doRequestAnimation")) this.config.doRequestAnimation = true;
+        if (this.config.hasOwnProperty("silent")) this.silent = CABLES.logSilent = this.config.silent;
+        if (!this.config.hasOwnProperty("doRequestAnimation")) this.config.doRequestAnimation = true;
 
-    if (!this.config.prefixAssetPath) this.config.prefixAssetPath = "";
-    if (!this.config.prefixJsPath) this.config.prefixJsPath = "";
-    if (!this.config.masterVolume) this.config.masterVolume = 1.0;
+        if (!this.config.prefixAssetPath) this.config.prefixAssetPath = "";
+        if (!this.config.prefixJsPath) this.config.prefixJsPath = "";
+        if (!this.config.masterVolume) this.config.masterVolume = 1.0;
 
-    this._variables = {};
-    this._variableListeners = [];
-    this.vars = {};
-    if (cfg && cfg.vars) this.vars = cfg.vars; // vars is old!
+        this._variables = {};
+        this._variableListeners = [];
+        this.vars = {};
+        if (cfg && cfg.vars) this.vars = cfg.vars; // vars is old!
 
-    this.cgl = new Context(this);
-    this.cgp = null;
+        this.cgl = new Context(this);
+        this.cgp = null;
 
-    this._subpatchOpCache = {};
+        this._subpatchOpCache = {};
 
-    this.cgl.setCanvas(this.config.glCanvasId || this.config.glCanvas || "glcanvas");
-    if (this.config.glCanvasResizeToWindow === true) this.cgl.setAutoResize("window");
-    if (this.config.glCanvasResizeToParent === true) this.cgl.setAutoResize("parent");
-    this.loading.setOnFinishedLoading(this.config.onFinishedLoading);
+        this.cgl.setCanvas(this.config.glCanvasId || this.config.glCanvas || "glcanvas");
+        if (this.config.glCanvasResizeToWindow === true) this.cgl.setAutoResize("window");
+        if (this.config.glCanvasResizeToParent === true) this.cgl.setAutoResize("parent");
+        this.loading.setOnFinishedLoading(this.config.onFinishedLoading);
 
-    if (this.cgl.aborted) this.aborted = true;
-    if (this.cgl.silent) this.silent = true;
+        if (this.cgl.aborted) this.aborted = true;
+        if (this.cgl.silent) this.silent = true;
 
-    this.freeTimer.play();
-    this.exec();
+        this.freeTimer.play();
+        this.exec();
 
-    if (!this.aborted)
-    {
-        if (this.config.patch)
+        if (!this.aborted)
         {
-            this.deSerialize(this.config.patch);
-        }
-        else if (this.config.patchFile)
-        {
-            ajax(
-                this.config.patchFile,
-                (err, _data) =>
-                {
-                    try
+            if (this.config.patch)
+            {
+                this.deSerialize(this.config.patch);
+            }
+            else if (this.config.patchFile)
+            {
+                ajax(
+                    this.config.patchFile,
+                    (err, _data) =>
                     {
-                        const data = JSON.parse(_data);
-                        if (err)
+                        try
                         {
-                            const txt = "";
-                            this._log.error("err", err);
-                            this._log.error("data", data);
-                            this._log.error("data", data.msg);
-                            return;
+                            const data = JSON.parse(_data);
+                            if (err)
+                            {
+                                const txt = "";
+                                this._log.error("err", err);
+                                this._log.error("data", data);
+                                this._log.error("data", data.msg);
+                                return;
+                            }
+                            this.deSerialize(data);
                         }
-                        this.deSerialize(data);
+                        catch (e)
+                        {
+                            this._log.error("could not load/parse patch ", e);
+                        }
                     }
-                    catch (e)
-                    {
-                        this._log.error("could not load/parse patch ", e);
-                    }
-                }
-            );
+                );
+            }
+            this.timer.play();
         }
-        this.timer.play();
-    }
 
     console.log("made with https://cables.gl"); // eslint-disable-line
-};
+    }
 
-Patch.prototype.isPlaying = function ()
-{
-    return !this._paused;
-};
+    isPlaying()
+    {
+        return !this._paused;
+    }
 
-Patch.prototype.isRenderingOneFrame = function ()
-{
-    return this._renderOneFrame;
-};
+    isRenderingOneFrame()
+    {
+        return this._renderOneFrame;
+    }
 
 
-Patch.prototype.renderOneFrame = function ()
-{
-    this._paused = true;
-    this._renderOneFrame = true;
-    this.exec();
-    this._renderOneFrame = false;
-};
+    renderOneFrame()
+    {
+        this._paused = true;
+        this._renderOneFrame = true;
+        this.exec();
+        this._renderOneFrame = false;
+    }
 
-/**
+    /**
  * current number of frames per second
  * @function getFPS
  * @memberof Patch
  * @instance
  * @return {Number} fps
  */
-Patch.prototype.getFPS = function ()
-{
-    this._log.error("deprecated getfps");
-    return 0;
-};
+    getFPS()
+    {
+        this._log.error("deprecated getfps");
+        return 0;
+    }
 
-/**
+    /**
  * returns true if patch is opened in editor/gui mode
  * @function isEditorMode
  * @memberof Patch
  * @instance
  * @return {Boolean} editor mode
  */
-Patch.prototype.isEditorMode = function ()
-{
-    return this.config.editorMode === true;
-};
+    isEditorMode()
+    {
+        return this.config.editorMode === true;
+    }
 
-/**
+    /**
  * pauses patch execution
  * @function pause
  * @memberof Patch
  * @instance
  */
-Patch.prototype.pause = function ()
-{
-    cancelAnimationFrame(this._animReq);
-    this.emitEvent("pause");
-    this._animReq = null;
-    this._paused = true;
-    this.freeTimer.pause();
-};
+    pause()
+    {
+        cancelAnimationFrame(this._animReq);
+        this.emitEvent("pause");
+        this._animReq = null;
+        this._paused = true;
+        this.freeTimer.pause();
+    }
 
-/**
+    /**
  * resumes patch execution
  * @function resume
  * @memberof Patch
  * @instance
  */
-Patch.prototype.resume = function ()
-{
-    if (this._paused)
+    resume()
     {
-        cancelAnimationFrame(this._animReq);
-        this._paused = false;
-        this.freeTimer.play();
-        this.emitEvent("resume");
-        this.exec();
+        if (this._paused)
+        {
+            cancelAnimationFrame(this._animReq);
+            this._paused = false;
+            this.freeTimer.play();
+            this.emitEvent("resume");
+            this.exec();
+        }
     }
-};
 
-/**
+    /**
  * set volume [0-1]
  * @function setVolume
  * @param {Number} v volume
  * @memberof Patch
  * @instance
  */
-Patch.prototype.setVolume = function (v)
-{
-    this.config.masterVolume = v;
-    for (let i = 0; i < this._volumeListeners.length; i++) this._volumeListeners[i].onMasterVolumeChanged(v);
-};
+    setVolume(v)
+    {
+        this.config.masterVolume = v;
+        for (let i = 0; i < this._volumeListeners.length; i++) this._volumeListeners[i].onMasterVolumeChanged(v);
+    }
 
 
-/**
+    /**
  * get asset path
  * @function getAssetPath
  * @memberof Patch
  * @param patchId
  * @instance
  */
-Patch.prototype.getAssetPath = function (patchId = null)
-{
-    if (this.config.hasOwnProperty("assetPath"))
+    getAssetPath(patchId = null)
     {
-        return this.config.assetPath;
+        if (this.config.hasOwnProperty("assetPath"))
+        {
+            return this.config.assetPath;
+        }
+        else if (this.isEditorMode())
+        {
+            let id = patchId || gui.project()._id;
+            return "/assets/" + id + "/";
+        }
+        else if (document.location.href.indexOf("cables.gl") > 0 || document.location.href.indexOf("cables.local") > 0)
+        {
+            const parts = document.location.pathname.split("/");
+            let id = patchId || parts[parts.length - 1];
+            return "/assets/" + id + "/";
+        }
+        else
+        {
+            return "assets/";
+        }
     }
-    else if (this.isEditorMode())
-    {
-        let id = patchId || gui.project()._id;
-        return "/assets/" + id + "/";
-    }
-    else if (document.location.href.indexOf("cables.gl") > 0 || document.location.href.indexOf("cables.local") > 0)
-    {
-        const parts = document.location.pathname.split("/");
-        let id = patchId || parts[parts.length - 1];
-        return "/assets/" + id + "/";
-    }
-    else
-    {
-        return "assets/";
-    }
-};
 
-/**
+    /**
  * get js path
  * @function getJsPath
  * @memberof Patch
  * @instance
  */
-Patch.prototype.getJsPath = function ()
-{
-    if (this.config.hasOwnProperty("jsPath"))
+    getJsPath()
     {
-        return this.config.jsPath;
+        if (this.config.hasOwnProperty("jsPath"))
+        {
+            return this.config.jsPath;
+        }
+        else
+        {
+            return "js/";
+        }
     }
-    else
-    {
-        return "js/";
-    }
-};
 
-/**
+    /**
  * get url/filepath for a filename
  * this uses prefixAssetpath in exported patches
  * @function getFilePath
@@ -15240,29 +15322,1021 @@ Patch.prototype.getJsPath = function ()
  * @param {String} filename
  * @return {String} url
  */
-Patch.prototype.getFilePath = function (filename)
-{
-    if (!filename) return filename;
-    filename = String(filename);
-    if (filename.indexOf("https:") === 0 || filename.indexOf("http:") === 0) return filename;
-    if (filename.indexOf("data:") === 0) return filename;
-    if (filename.indexOf("file:") === 0) return filename;
-    filename = filename.replace("//", "/");
-    if (filename.startsWith(this.config.prefixAssetPath)) filename = filename.replace(this.config.prefixAssetPath, "");
-    return this.config.prefixAssetPath + filename + (this.config.suffixAssetPath || "");
-};
+    getFilePath(filename)
+    {
+        if (!filename) return filename;
+        filename = String(filename);
+        if (filename.indexOf("https:") === 0 || filename.indexOf("http:") === 0) return filename;
+        if (filename.indexOf("data:") === 0) return filename;
+        if (filename.indexOf("file:") === 0) return filename;
+        filename = filename.replace("//", "/");
+        if (filename.startsWith(this.config.prefixAssetPath)) filename = filename.replace(this.config.prefixAssetPath, "");
+        return this.config.prefixAssetPath + filename + (this.config.suffixAssetPath || "");
+    }
 
-Patch.prototype.clear = function ()
-{
-    this.emitEvent("patchClearStart");
-    this.cgl.TextureEffectMesh = null;
-    this.animFrameOps.length = 0;
-    this.timer = new Timer();
-    while (this.ops.length > 0) this.deleteOp(this.ops[0].id);
+    clear()
+    {
+        this.emitEvent("patchClearStart");
+        this.cgl.TextureEffectMesh = null;
+        this.animFrameOps.length = 0;
+        this.timer = new Timer();
+        while (this.ops.length > 0) this.deleteOp(this.ops[0].id);
 
-    this._opIdCache = {};
-    this.emitEvent("patchClearEnd");
-};
+        this._opIdCache = {};
+        this.emitEvent("patchClearEnd");
+    }
+
+
+
+
+    createOp(identifier, id, opName = null)
+    {
+        let op = null;
+        let objName = "";
+
+        try
+        {
+            if (!identifier)
+            {
+                console.error("createop identifier false", identifier);
+                console.log((new Error()).stack);
+                return;
+            }
+            if (identifier.indexOf("Ops.") === -1)
+            {
+                // this should be a uuid, not a namespace
+                // creating ops by id should be the default way from now on!
+                const opId = identifier;
+
+
+
+                if (CABLES.OPS[opId])
+                {
+                    objName = CABLES.OPS[opId].objName;
+                    op = new CABLES.OPS[opId].f(this, objName, id, opId);
+                    op.opId = opId;
+                }
+                else
+                {
+                    if (opName)
+                    {
+                        identifier = opName;
+                        this._log.warn("could not find op by id: " + opId);
+                    }
+                    else
+                    {
+                        throw new Error("could not find op by id: " + opId, { "cause": "opId:" + opId });
+                    }
+                }
+            }
+
+            if (!op)
+            {
+                // fallback: create by objname!
+                objName = identifier;
+                const parts = identifier.split(".");
+                const opObj = Patch.getOpClass(objName);
+
+                if (!opObj)
+                {
+                    this.emitEvent("criticalError", { "title": "unknown op" + objName, "text": "unknown op: " + objName });
+
+                    this._log.error("unknown op: " + objName);
+                    throw new Error("unknown op: " + objName);
+                }
+                else
+                {
+                    if (parts.length == 2) op = new window[parts[0]][parts[1]](this, objName, id);
+                    else if (parts.length == 3) op = new window[parts[0]][parts[1]][parts[2]](this, objName, id);
+                    else if (parts.length == 4) op = new window[parts[0]][parts[1]][parts[2]][parts[3]](this, objName, id);
+                    else if (parts.length == 5) op = new window[parts[0]][parts[1]][parts[2]][parts[3]][parts[4]](this, objName, id);
+                    else if (parts.length == 6) op = new window[parts[0]][parts[1]][parts[2]][parts[3]][parts[4]][parts[5]](this, objName, id);
+                    else if (parts.length == 7) op = new window[parts[0]][parts[1]][parts[2]][parts[3]][parts[4]][parts[5]][parts[6]](this, objName, id);
+                    else if (parts.length == 8) op = new window[parts[0]][parts[1]][parts[2]][parts[3]][parts[4]][parts[5]][parts[6]][parts[7]](this, objName, id);
+                    else if (parts.length == 9) op = new window[parts[0]][parts[1]][parts[2]][parts[3]][parts[4]][parts[5]][parts[6]][parts[7]][parts[8]](this, objName, id);
+                    else if (parts.length == 10) op = new window[parts[0]][parts[1]][parts[2]][parts[3]][parts[4]][parts[5]][parts[6]][parts[7]][parts[8]][parts[9]](this, objName, id);
+                    else console.log("parts.length", parts.length);
+                }
+
+                if (op)
+                {
+                    op.opId = null;
+                    for (const i in CABLES.OPS)
+                    {
+                        if (CABLES.OPS[i].objName == objName) op.opId = i;
+                    }
+                }
+            }
+        }
+        catch (e)
+        {
+            this._crashedOps.push(objName);
+
+            this._log.error("[instancing error] " + objName, e);
+
+            if (!this.isEditorMode())
+            {
+                this._log.error("INSTANCE_ERR", "Instancing Error: " + objName, e);
+                // throw new Error("instancing error 1" + objName);
+            }
+        }
+
+        if (op)
+        {
+            op._objName = objName;
+            op.patch = this;
+        }
+        else
+        {
+            this._log.log("no op was created!?", identifier, id);
+        }
+        return op;
+    }
+
+    /**
+     * create a new op in patch
+     * @function addOp
+     * @memberof Patch
+     * @instance
+     * @param {string} opIdentifier uuid or name, e.g. Ops.Math.Sum
+     * @param {Object} uiAttribs Attributes
+     * @param {string} id
+     * @param {boolean} fromDeserialize
+     * @param {string} opName e.g. Ops.Math.Sum
+     * @example
+     * // add invisible op
+     * patch.addOp('Ops.Math.Sum', { showUiAttribs: false });
+     */
+    addOp(opIdentifier, uiAttribs, id, fromDeserialize, opName)
+    {
+        const op = this.createOp(opIdentifier, id, opName);
+
+        if (op)
+        {
+            uiAttribs = uiAttribs || {};
+            if (uiAttribs.hasOwnProperty("errors")) delete uiAttribs.errors;
+            if (uiAttribs.hasOwnProperty("error")) delete uiAttribs.error;
+            uiAttribs.subPatch = uiAttribs.subPatch || 0;
+
+            op.setUiAttribs(uiAttribs);
+            if (op.onCreate) op.onCreate();
+
+            if (op.hasOwnProperty("onAnimFrame")) this.addOnAnimFrame(op);
+            if (op.hasOwnProperty("onMasterVolumeChanged")) this._volumeListeners.push(op);
+
+            if (this._opIdCache[op.id])
+            {
+                this._log.warn("opid with id " + op.id + " already exists in patch!");
+                this.deleteOp(op.id); // strange with subpatch ops: why is this needed, somehow ops get added twice ???.....
+                // return;
+            }
+
+            this.ops.push(op);
+            this._opIdCache[op.id] = op;
+
+            if (this._subPatchCacheAdd) this._subPatchCacheAdd(uiAttribs.subPatch, op);
+            this.emitEvent("onOpAdd", op, fromDeserialize);
+
+            if (op.init) op.init();
+
+            op.emitEvent("init", fromDeserialize);
+        }
+        else
+        {
+            this._log.error("addop: op could not be created: ", opIdentifier);
+        }
+
+        return op;
+    }
+
+    addOnAnimFrame(op)
+    {
+        for (let i = 0; i < this.animFrameOps.length; i++) if (this.animFrameOps[i] == op) { return; }
+
+        this.animFrameOps.push(op);
+    }
+
+    removeOnAnimFrame(op)
+    {
+        for (let i = 0; i < this.animFrameOps.length; i++)
+        {
+            if (this.animFrameOps[i] == op)
+            {
+                this.animFrameOps.splice(i, 1);
+                return;
+            }
+        }
+    }
+
+    addOnAnimFrameCallback(cb)
+    {
+        this.animFrameCallbacks.push(cb);
+    }
+
+    removeOnAnimCallback(cb)
+    {
+        for (let i = 0; i < this.animFrameCallbacks.length; i++)
+        {
+            if (this.animFrameCallbacks[i] == cb)
+            {
+                this.animFrameCallbacks.splice(i, 1);
+                return;
+            }
+        }
+    }
+
+    deleteOp(opid, tryRelink, reloadingOp)
+    {
+        let found = false;
+        for (const i in this.ops)
+        {
+            if (this.ops[i].id == opid)
+            {
+                const op = this.ops[i];
+                let reLinkP1 = null;
+                let reLinkP2 = null;
+
+                if (op)
+                {
+                    found = true;
+                    if (tryRelink)
+                    {
+                        if (op.portsIn.length > 0 && op.portsIn[0].isLinked() && (op.portsOut.length > 0 && op.portsOut[0].isLinked()))
+                        {
+                            if (op.portsIn[0].getType() == op.portsOut[0].getType() && op.portsIn[0].links[0])
+                            {
+                                reLinkP1 = op.portsIn[0].links[0].getOtherPort(op.portsIn[0]);
+                                reLinkP2 = op.portsOut[0].links[0].getOtherPort(op.portsOut[0]);
+                            }
+                        }
+                    }
+
+                    const opToDelete = this.ops[i];
+                    opToDelete.removeLinks();
+
+                    if (this.onDelete)
+                    {
+                        // todo: remove
+                        this._log.warn("deprecated this.onDelete", this.onDelete);
+                        this.onDelete(opToDelete);
+                    }
+
+                    this.ops.splice(i, 1);
+                    opToDelete.emitEvent("delete", opToDelete);
+                    this.emitEvent("onOpDelete", opToDelete, reloadingOp);
+
+                    if (this.clearSubPatchCache) this.clearSubPatchCache(opToDelete.uiAttribs.subPatch);
+
+                    if (opToDelete.onDelete) opToDelete.onDelete(reloadingOp);
+                    opToDelete.cleanUp();
+
+                    if (reLinkP1 !== null && reLinkP2 !== null)
+                    {
+                        this.link(reLinkP1.op, reLinkP1.getName(), reLinkP2.op, reLinkP2.getName());
+                    }
+
+                    delete this._opIdCache[opid];
+                    break;
+                }
+            }
+        }
+
+        if (!found) this._log.warn("core patch deleteop: not found...", opid);
+    }
+
+    getFrameNum()
+    {
+        return this._frameNum;
+    }
+
+    emitOnAnimFrameEvent(time, delta)
+    {
+        time = time || this.timer.getTime();
+
+        for (let i = 0; i < this.animFrameCallbacks.length; ++i)
+            if (this.animFrameCallbacks[i])
+                this.animFrameCallbacks[i](time, this._frameNum, delta);
+
+        for (let i = 0; i < this.animFrameOps.length; ++i)
+            if (this.animFrameOps[i].onAnimFrame)
+                this.animFrameOps[i].onAnimFrame(time, this._frameNum, delta);
+    }
+
+    renderFrame(timestamp)
+    {
+        this.timer.update(this.reqAnimTimeStamp);
+        this.freeTimer.update(this.reqAnimTimeStamp);
+        const time = this.timer.getTime();
+        const startTime = performance.now();
+        this.cgl.frameStartTime = this.timer.getTime();
+
+        const delta = timestamp - this.reqAnimTimeStamp || timestamp;
+
+        this.emitOnAnimFrameEvent(null, delta);
+
+        this.cgl.profileData.profileFrameDelta = delta;
+        this.reqAnimTimeStamp = timestamp;
+        this.cgl.profileData.profileOnAnimFrameOps = performance.now() - startTime;
+
+        this.emitEvent("onRenderFrame", time);
+
+        this._frameNum++;
+        if (this._frameNum == 1)
+        {
+            if (this.config.onFirstFrameRendered) this.config.onFirstFrameRendered();
+        }
+    }
+
+    exec(timestamp)
+    {
+        if (!this._renderOneFrame && (this._paused || this.aborted)) return;
+        this.emitEvent("reqAnimFrame");
+        cancelAnimationFrame(this._animReq);
+
+        this.config.fpsLimit = this.config.fpsLimit || 0;
+        if (this.config.fpsLimit)
+        {
+            this._frameInterval = 1000 / this.config.fpsLimit;
+        }
+
+        const now = CABLES.now();
+        const frameDelta = now - this._frameNext;
+
+        if (this.isEditorMode())
+        {
+            if (!this._renderOneFrame)
+            {
+                if (now - this._lastFrameTime >= 500 && this._lastFrameTime !== 0 && !this._frameWasdelayed)
+                {
+                    this._lastFrameTime = 0;
+                    setTimeout(this.exec.bind(this), 500);
+                    this.emitEvent("renderDelayStart");
+                    this._frameWasdelayed = true;
+                    return;
+                }
+            }
+        }
+
+        if (this._renderOneFrame || this.config.fpsLimit === 0 || frameDelta > this._frameInterval || this._frameWasdelayed)
+        {
+            this.renderFrame(timestamp);
+
+            if (this._frameInterval) this._frameNext = now - (frameDelta % this._frameInterval);
+        }
+
+        if (this._frameWasdelayed)
+        {
+            this.emitEvent("renderDelayEnd");
+            this._frameWasdelayed = false;
+        }
+
+        if (this._renderOneFrame)
+        {
+            if (this.onOneFrameRendered) this.onOneFrameRendered(); // todo remove everywhere and use propper event...
+            this.emitEvent("renderedOneFrame");
+            this._renderOneFrame = false;
+        }
+
+
+        if (this.config.doRequestAnimation) this._animReq = this.cgl.canvas.ownerDocument.defaultView.requestAnimationFrame(this.exec.bind(this));
+    }
+
+    /**
+     * link two ops/ports
+     * @function link
+     * @memberof Patch
+     * @instance
+     * @param {Op} op1
+     * @param {String} port1Name
+     * @param {Op} op2
+     * @param {String} port2Name
+     * @param {boolean} lowerCase
+     * @param {boolean} fromDeserialize
+     */
+    link(op1, port1Name, op2, port2Name, lowerCase, fromDeserialize)
+    {
+        if (!op1) return this._log.warn("link: op1 is null ");
+        if (!op2) return this._log.warn("link: op2 is null");
+
+        const port1 = op1.getPort(port1Name, lowerCase);
+        const port2 = op2.getPort(port2Name, lowerCase);
+
+        if (!port1) return op1._log.warn("port1 not found! " + port1Name + " (" + op1.objName + ")");
+        if (!port2) return op1._log.warn("port2 not found! " + port2Name + " of " + op2.name + "(" + op2.objName + ")", op2);
+
+        if (!port1.shouldLink(port1, port2) || !port2.shouldLink(port1, port2)) return false;
+
+        if (Link.canLink(port1, port2))
+        {
+            const link = new Link(this);
+            link.link(port1, port2);
+
+            this.emitEvent("onLink", port1, port2, link, fromDeserialize);
+            return link;
+        }
+    }
+
+    serialize(options)
+    {
+        const obj = {};
+
+        options = options || {};
+        obj.ops = [];
+        obj.settings = this.settings;
+        for (const i in this.ops)
+        {
+            const op = this.ops[i];
+            if (op && op.getSerialized)obj.ops.push(op.getSerialized());
+        }
+
+        cleanJson(obj);
+
+        if (options.asObject) return obj;
+        return JSON.stringify(obj);
+    }
+
+    getOpsByRefId(refId)
+    {
+        const perf = CABLES.UI.uiProfiler.start("[corepatchetend] getOpsByRefId");
+        const refOps = [];
+        const ops = gui.corePatch().ops;
+        for (let i = 0; i < ops.length; i++)
+            if (ops[i].storage && ops[i].storage.ref == refId) refOps.push(ops[i]);
+        perf.finish();
+        return refOps;
+    }
+
+    getOpById(opid)
+    {
+        return this._opIdCache[opid];
+    }
+
+    getOpsByName(name)
+    {
+        // TODO: is this still needed ? unclear behaviour....
+        const arr = [];
+        for (const i in this.ops)
+            if (this.ops[i].name == name) arr.push(this.ops[i]);
+        return arr;
+    }
+
+    getOpsByObjName(name)
+    {
+        const arr = [];
+        for (const i in this.ops)
+            if (this.ops[i].objName == name) arr.push(this.ops[i]);
+        return arr;
+    }
+
+    getOpsByOpId(opid)
+    {
+        const arr = [];
+        for (const i in this.ops)
+            if (this.ops[i].opId == opid) arr.push(this.ops[i]);
+        return arr;
+    }
+
+    loadLib(which)
+    {
+        ajaxSync(
+            "/ui/libs/" + which + ".js",
+            (err, res) =>
+            {
+                const se = document.createElement("script");
+                se.type = "text/javascript";
+                se.text = res;
+                document.getElementsByTagName("head")[0].appendChild(se);
+            },
+            "GET",
+        );
+    }
+
+    getSubPatchOpsByName(patchId, objName)
+    {
+        const arr = [];
+        for (const i in this.ops)
+            if (this.ops[i].uiAttribs && this.ops[i].uiAttribs.subPatch == patchId && this.ops[i].objName == objName)
+                arr.push(this.ops[i]);
+
+        return arr;
+    }
+
+    getSubPatchOp(patchId, objName)
+    {
+        return this.getFirstSubPatchOpByName(patchId, objName);
+    }
+
+    getFirstSubPatchOpByName(patchId, objName)
+    {
+        for (const i in this.ops)
+            if (this.ops[i].uiAttribs && this.ops[i].uiAttribs.subPatch == patchId && this.ops[i].objName == objName)
+                return this.ops[i];
+
+        return false;
+    }
+
+    _addLink(opinid, opoutid, inName, outName)
+    {
+        return this.link(this.getOpById(opinid), inName, this.getOpById(opoutid), outName, false, true);
+    }
+
+    deSerialize(obj, options)
+    {
+        options = options || { "genIds": false, "createRef": false };
+        if (this.aborted) return;
+        const newOps = [];
+        const loadingId = this.loading.start("core", "deserialize");
+
+        this.namespace = obj.namespace || "";
+        this.name = obj.name || "";
+
+        if (typeof obj === "string") obj = JSON.parse(obj);
+
+        this.settings = obj.settings;
+
+        this.emitEvent("patchLoadStart");
+
+        obj.ops = obj.ops || [];
+
+        if (window.logStartup)logStartup("add " + obj.ops.length + " ops... ");
+
+        const addedOps = [];
+
+        // add ops...
+        for (let iop = 0; iop < obj.ops.length; iop++)
+        {
+            const start = CABLES.now();
+            const opData = obj.ops[iop];
+            let op = null;
+
+            try
+            {
+                if (opData.opId) op = this.addOp(opData.opId, opData.uiAttribs, opData.id, true, opData.objName);
+                else op = this.addOp(opData.objName, opData.uiAttribs, opData.id, true);
+            }
+            catch (e)
+            {
+                this._log.error("[instancing error] op data:", opData, e);
+                // throw new Error("could not create op by id: <b>" + (opData.objName || opData.opId) + "</b> (" + opData.id + ")");
+            }
+
+            if (op)
+            {
+                addedOps.push(op);
+                if (options.genIds) op.id = shortId();
+                op.portsInData = opData.portsIn;
+                op._origData = JSON.parse(JSON.stringify(opData));
+                op.storage = opData.storage;
+                // if (opData.hasOwnProperty("disabled"))op.setEnabled(!opData.disabled);
+
+                for (const ipi in opData.portsIn)
+                {
+                    const objPort = opData.portsIn[ipi];
+                    if (objPort && objPort.hasOwnProperty("name"))
+                    {
+                        const port = op.getPort(objPort.name);
+
+                        if (port && (port.uiAttribs.display == "bool" || port.uiAttribs.type == "bool") && !isNaN(objPort.value)) objPort.value = objPort.value == true ? 1 : 0;
+                        if (port && objPort.value !== undefined && port.type != CONSTANTS.OP.OP_PORT_TYPE_TEXTURE) port.set(objPort.value);
+
+                        if (port)
+                        {
+                            port.deSerializeSettings(objPort);
+                        }
+                        else
+                        {
+                            // if (port.uiAttribs.hasOwnProperty("title"))
+                            // {
+                            //     op.preservedPortTitles = op.preservedPortTitles || {};
+                            //     op.preservedPortTitles[port.name] = port.uiAttribs.title;
+                            // }
+                            op.preservedPortValues = op.preservedPortValues || {};
+                            op.preservedPortValues[objPort.name] = objPort.value;
+                        }
+                    }
+                }
+
+                for (const ipo in opData.portsOut)
+                {
+                    const objPort = opData.portsOut[ipo];
+                    if (objPort && objPort.hasOwnProperty("name"))
+                    {
+                        const port2 = op.getPort(objPort.name);
+
+                        if (port2)
+                        {
+                            port2.deSerializeSettings(objPort);
+
+                            if (port2.uiAttribs.hasOwnProperty("title"))
+                            {
+                                op.preservedPortTitles = op.preservedPortTitles || {};
+                                op.preservedPortTitles[port2.name] = port2.uiAttribs.title;
+                            }
+
+
+                            if (port2.type != CONSTANTS.OP.OP_PORT_TYPE_TEXTURE && objPort.hasOwnProperty("value"))
+                                port2.set(obj.ops[iop].portsOut[ipo].value);
+
+                            if (objPort.expose) port2.setUiAttribs({ "expose": true });
+                        }
+                    }
+                }
+                newOps.push(op);
+            }
+
+            const timeused = Math.round(100 * (CABLES.now() - start)) / 100;
+            if (!this.silent && timeused > 5) console.log("long op init ", obj.ops[iop].objName, timeused);
+        }
+        if (window.logStartup)logStartup("add ops done");
+
+        for (const i in this.ops)
+        {
+            if (this.ops[i].onLoadedValueSet)
+            {
+                this.ops[i].onLoadedValueSet(this.ops[i]._origData);
+                this.ops[i].onLoadedValueSet = null;
+                this.ops[i]._origData = null;
+            }
+            this.ops[i].emitEvent("loadedValueSet");
+        }
+
+        if (window.logStartup)logStartup("creating links");
+
+        if (options.opsCreated)options.opsCreated(addedOps);
+        // create links...
+        if (obj.ops)
+        {
+            for (let iop = 0; iop < obj.ops.length; iop++)
+            {
+                if (obj.ops[iop].portsIn)
+                {
+                    for (let ipi2 = 0; ipi2 < obj.ops[iop].portsIn.length; ipi2++)
+                    {
+                        if (obj.ops[iop].portsIn[ipi2] && obj.ops[iop].portsIn[ipi2].links)
+                        {
+                            for (let ili = 0; ili < obj.ops[iop].portsIn[ipi2].links.length; ili++)
+                            {
+                                const l = this._addLink(
+                                    obj.ops[iop].portsIn[ipi2].links[ili].objIn,
+                                    obj.ops[iop].portsIn[ipi2].links[ili].objOut,
+                                    obj.ops[iop].portsIn[ipi2].links[ili].portIn,
+                                    obj.ops[iop].portsIn[ipi2].links[ili].portOut);
+
+                                // const took = performance.now - startTime;
+                                // if (took > 100)console.log(obj().ops[iop].portsIn[ipi2].links[ili].objIn, obj.ops[iop].portsIn[ipi2].links[ili].objOut, took);
+                            }
+                        }
+                    }
+                }
+                if (obj.ops[iop].portsOut)
+                    for (let ipi2 = 0; ipi2 < obj.ops[iop].portsOut.length; ipi2++)
+                        if (obj.ops[iop].portsOut[ipi2] && obj.ops[iop].portsOut[ipi2].links)
+                        {
+                            for (let ili = 0; ili < obj.ops[iop].portsOut[ipi2].links.length; ili++)
+                            {
+                                if (obj.ops[iop].portsOut[ipi2].links[ili])
+                                {
+                                    if (obj.ops[iop].portsOut[ipi2].links[ili].subOpRef)
+                                    {
+                                        // lost link
+                                        const outOp = this.getOpById(obj.ops[iop].portsOut[ipi2].links[ili].objOut);
+                                        let dstOp = null;
+                                        let theSubPatch = 0;
+
+                                        for (let i = 0; i < this.ops.length; i++)
+                                        {
+                                            if (
+                                                this.ops[i].storage &&
+                                                this.ops[i].storage.ref == obj.ops[iop].portsOut[ipi2].links[ili].subOpRef &&
+                                                outOp.uiAttribs.subPatch == this.ops[i].uiAttribs.subPatch
+                                            )
+                                            {
+                                                theSubPatch = this.ops[i].patchId.get();
+                                                break;
+                                            }
+                                        }
+
+                                        for (let i = 0; i < this.ops.length; i++)
+                                        {
+                                            if (
+                                                this.ops[i].storage &&
+                                                this.ops[i].storage.ref == obj.ops[iop].portsOut[ipi2].links[ili].refOp &&
+                                                this.ops[i].uiAttribs.subPatch == theSubPatch)
+                                            {
+                                                dstOp = this.ops[i];
+                                                break;
+                                            }
+                                        }
+
+                                        if (!dstOp) this._log.warn("could not find op for lost link");
+                                        else
+                                        {
+                                            const l = this._addLink(
+                                                dstOp.id,
+                                                obj.ops[iop].portsOut[ipi2].links[ili].objOut,
+
+                                                obj.ops[iop].portsOut[ipi2].links[ili].portIn,
+                                                obj.ops[iop].portsOut[ipi2].links[ili].portOut);
+                                        }
+                                    }
+                                    else
+                                    {
+                                        const l = this._addLink(obj.ops[iop].portsOut[ipi2].links[ili].objIn, obj.ops[iop].portsOut[ipi2].links[ili].objOut, obj.ops[iop].portsOut[ipi2].links[ili].portIn, obj.ops[iop].portsOut[ipi2].links[ili].portOut);
+
+                                        if (!l)
+                                        {
+                                            const op1 = this.getOpById(obj.ops[iop].portsOut[ipi2].links[ili].objIn);
+                                            const op2 = this.getOpById(obj.ops[iop].portsOut[ipi2].links[ili].objOut);
+
+                                            if (!op1)console.log("could not find link op1");
+                                            if (!op2)console.log("could not find link op2");
+
+                                            const p1Name = obj.ops[iop].portsOut[ipi2].links[ili].portIn;
+
+                                            if (op1 && !op1.getPort(p1Name))
+                                            {
+                                                // console.log("PRESERVE port 1 not found", p1Name);
+
+                                                op1.preservedPortLinks[p1Name] = op1.preservedPortLinks[p1Name] || [];
+                                                op1.preservedPortLinks[p1Name].push(obj.ops[iop].portsOut[ipi2].links[ili]);
+                                            }
+
+                                            const p2Name = obj.ops[iop].portsOut[ipi2].links[ili].portOut;
+                                            if (op2 && !op2.getPort(p2Name))
+                                            {
+                                                // console.log("PRESERVE port 2 not found", obj.ops[iop].portsOut[ipi2].links[ili].portOut);
+                                                op2.preservedPortLinks[p1Name] = op2.preservedPortLinks[p1Name] || [];
+                                                op2.preservedPortLinks[p1Name].push(obj.ops[iop].portsOut[ipi2].links[ili]);
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+            }
+        }
+
+        if (window.logStartup)logStartup("calling ops onloaded");
+
+        for (const i in this.ops)
+        {
+            if (this.ops[i].onLoaded)
+            {
+                // TODO: deprecate!!!
+                this.ops[i].onLoaded();
+                this.ops[i].onLoaded = null;
+            }
+        }
+
+        if (window.logStartup)logStartup("initializing ops...");
+        for (const i in this.ops)
+        {
+            if (this.ops[i].init)
+            {
+                try
+                {
+                    this.ops[i].init();
+                    this.ops[i].init = null;
+                }
+                catch (e)
+                {
+                    console.error("op.init crash", e);
+                }
+            }
+        }
+
+        if (window.logStartup)logStartup("initializing vars...");
+
+        if (this.config.variables)
+            for (const varName in this.config.variables)
+                this.setVarValue(varName, this.config.variables[varName]);
+
+        if (window.logStartup)logStartup("initializing var ports");
+
+        for (const i in this.ops)
+        {
+            this.ops[i].initVarPorts();
+            delete this.ops[i].uiAttribs.pasted;
+        }
+
+        setTimeout(() => { this.loading.finished(loadingId); }, 100);
+
+        if (this.config.onPatchLoaded) this.config.onPatchLoaded(this);
+
+        this.deSerialized = true;
+        this.emitEvent("patchLoadEnd", newOps, obj, options.genIds);
+    }
+
+    profile(enable)
+    {
+        this.profiler = new Profiler(this);
+        for (const i in this.ops)
+        {
+            this.ops[i].profile(enable);
+        }
+    }
+
+    // ----------------------
+
+    /**
+     * set variable value
+     * @function setVariable
+     * @memberof Patch
+     * @instance
+     * @param {String} name of variable
+     * @param {Number|String|Boolean} val value
+     */
+    setVariable(name, val)
+    {
+        // if (this._variables.hasOwnProperty(name))
+        if (this._variables[name] !== undefined)
+        {
+            this._variables[name].setValue(val);
+        }
+        else
+        {
+            this._log.warn("variable " + name + " not found!");
+        }
+    }
+
+    _sortVars()
+    {
+        if (!this.isEditorMode()) return;
+        const ordered = {};
+        Object.keys(this._variables).sort(
+            (a, b) =>
+            { return a.localeCompare(b, "en", { "sensitivity": "base" }); }
+        ).forEach((key) =>
+        {
+            ordered[key] = this._variables[key];
+        });
+        this._variables = ordered;
+    }
+
+    /**
+     * has variable
+     * @function hasVariable
+     * @memberof Patch
+     * @instance
+     * @param {String} name of variable
+     */
+    hasVar(name)
+    {
+        return this._variables[name] !== undefined;
+
+        // return this._variables.hasOwnProperty(name);
+    }
+
+    // used internally
+    setVarValue(name, val, type)
+    {
+        if (this.hasVar(name))
+        {
+            this._variables[name].setValue(val);
+        }
+        else
+        {
+            this._variables[name] = new core_variable(name, val, type);
+            this._sortVars();
+            this.emitEvent("variablesChanged");
+        }
+        return this._variables[name];
+    }
+
+    // old?
+    getVarValue(name, val)
+    {
+        if (this._variables.hasOwnProperty(name)) return this._variables[name].getValue();
+    }
+
+    /**
+     * @function getVar
+     * @memberof Patch
+     * @instance
+     * @param {String} name
+     * @return {Variable} variable
+     */
+    getVar(name)
+    {
+        if (this._variables.hasOwnProperty(name)) return this._variables[name];
+    }
+
+
+    deleteVar(name)
+    {
+        for (let i = 0; i < this.ops.length; i++)
+            for (let j = 0; j < this.ops[i].portsIn.length; j++)
+                if (this.ops[i].portsIn[j].getVariableName() == name)
+                    this.ops[i].portsIn[j].setVariable(null);
+
+        delete this._variables[name];
+        this.emitEvent("variableDeleted", name);
+        this.emitEvent("variablesChanged");
+    }
+
+    /**
+     * @function getVars
+     * @memberof Patch
+     * @instance
+     * @param t
+     * @return {Array<Variable>} variables
+     * @function
+     */
+    getVars(t)
+    {
+        if (t === undefined) return this._variables;
+
+        const vars = [];
+        if (t == CABLES.OP_PORT_TYPE_STRING) t = "string";
+        if (t == CABLES.OP_PORT_TYPE_VALUE) t = "number";
+        if (t == CABLES.OP_PORT_TYPE_ARRAY) t = "array";
+        if (t == CABLES.OP_PORT_TYPE_OBJECT) t = "object";
+
+        for (const i in this._variables)
+        {
+            if (!this._variables[i].type || this._variables[i].type == t) vars.push(this._variables[i]);
+        }
+        return vars;
+    }
+
+
+    /**
+     * @function preRenderOps
+     * @memberof Patch
+     * @instance
+     * @description invoke pre rendering of ops
+     * @function
+     */
+    preRenderOps()
+    {
+        this._log.log("prerendering...");
+
+        for (let i = 0; i < this.ops.length; i++)
+        {
+            if (this.ops[i].preRender)
+            {
+                this.ops[i].preRender();
+                this._log.log("prerender " + this.ops[i].objName);
+            }
+        }
+    }
+
+    /**
+     * @function dispose
+     * @memberof Patch
+     * @instance
+     * @description stop, dispose and cleanup patch
+     */
+    dispose()
+    {
+        this.pause();
+        this.clear();
+        this.cgl.dispose();
+    }
+
+    pushTriggerStack(p)
+    {
+        this._triggerStack.push(p);
+    }
+
+    popTriggerStack()
+    {
+        this._triggerStack.pop();
+    }
+
+    printTriggerStack()
+    {
+        if (this._triggerStack.length == 0)
+        {
+            // console.log("stack length", this._triggerStack.length); // eslint-disable-line
+            return;
+        }
+        console.groupCollapsed( // eslint-disable-line
+            "trigger port stack " + this._triggerStack[this._triggerStack.length - 1].op.objName + "." + this._triggerStack[this._triggerStack.length - 1].name,
+        );
+
+        const rows = [];
+        for (let i = 0; i < this._triggerStack.length; i++)
+        {
+            rows.push(i + ". " + this._triggerStack[i].op.objName + " " + this._triggerStack[i].name);
+        }
+
+        console.table(rows); // eslint-disable-line
+        console.groupEnd(); // eslint-disable-line
+    }
+
+    /**
+     * returns document object of the patch could be != global document object when opening canvas ina popout window
+     * @function getDocument
+     * @memberof Patch
+     * @instance
+     * @return {Object} document
+     */
+    getDocument()
+    {
+        return this.cgl.canvas.ownerDocument;
+    }
+}
 
 Patch.getOpClass = function (objName)
 {
@@ -15288,989 +16362,7 @@ Patch.getOpClass = function (objName)
     }
 };
 
-Patch.prototype.createOp = function (identifier, id, opName = null)
-{
-    let op = null;
-    let objName = "";
 
-    try
-    {
-        if (!identifier)
-        {
-            console.error("createop identifier false", identifier);
-            console.log((new Error()).stack);
-            return;
-        }
-        if (identifier.indexOf("Ops.") === -1)
-        {
-            // this should be a uuid, not a namespace
-            // creating ops by id should be the default way from now on!
-            const opId = identifier;
-
-
-
-            if (CABLES.OPS[opId])
-            {
-                objName = CABLES.OPS[opId].objName;
-                op = new CABLES.OPS[opId].f(this, objName, id, opId);
-                op.opId = opId;
-            }
-            else
-            {
-                if (opName)
-                {
-                    identifier = opName;
-                    this._log.warn("could not find op by id: " + opId);
-                }
-                else
-                {
-                    throw new Error("could not find op by id: " + opId, { "cause": "opId:" + opId });
-                }
-            }
-        }
-
-        if (!op)
-        {
-            // fallback: create by objname!
-            objName = identifier;
-            const parts = identifier.split(".");
-            const opObj = Patch.getOpClass(objName);
-
-            if (!opObj)
-            {
-                this.emitEvent("criticalError", { "title": "unknown op" + objName, "text": "unknown op: " + objName });
-
-                this._log.error("unknown op: " + objName);
-                throw new Error("unknown op: " + objName);
-            }
-            else
-            {
-                if (parts.length == 2) op = new window[parts[0]][parts[1]](this, objName, id);
-                else if (parts.length == 3) op = new window[parts[0]][parts[1]][parts[2]](this, objName, id);
-                else if (parts.length == 4) op = new window[parts[0]][parts[1]][parts[2]][parts[3]](this, objName, id);
-                else if (parts.length == 5) op = new window[parts[0]][parts[1]][parts[2]][parts[3]][parts[4]](this, objName, id);
-                else if (parts.length == 6) op = new window[parts[0]][parts[1]][parts[2]][parts[3]][parts[4]][parts[5]](this, objName, id);
-                else if (parts.length == 7) op = new window[parts[0]][parts[1]][parts[2]][parts[3]][parts[4]][parts[5]][parts[6]](this, objName, id);
-                else if (parts.length == 8) op = new window[parts[0]][parts[1]][parts[2]][parts[3]][parts[4]][parts[5]][parts[6]][parts[7]](this, objName, id);
-                else if (parts.length == 9) op = new window[parts[0]][parts[1]][parts[2]][parts[3]][parts[4]][parts[5]][parts[6]][parts[7]][parts[8]](this, objName, id);
-                else if (parts.length == 10) op = new window[parts[0]][parts[1]][parts[2]][parts[3]][parts[4]][parts[5]][parts[6]][parts[7]][parts[8]][parts[9]](this, objName, id);
-                else console.log("parts.length", parts.length);
-            }
-
-            if (op)
-            {
-                op.opId = null;
-                for (const i in CABLES.OPS)
-                {
-                    if (CABLES.OPS[i].objName == objName) op.opId = i;
-                }
-            }
-        }
-    }
-    catch (e)
-    {
-        this._crashedOps.push(objName);
-
-        this._log.error(e);
-        this._log.error("[instancing error] " + objName, e);
-
-        if (!this.isEditorMode())
-        {
-            this._log.error("INSTANCE_ERR", "Instancing Error: " + objName, e);
-            // throw new Error("instancing error 1" + objName);
-        }
-    }
-
-    if (op)
-    {
-        op._objName = objName;
-        op.patch = this;
-    }
-    else
-    {
-        this._log.log("no op was created!?", identifier, id);
-    }
-    return op;
-};
-
-/**
- * create a new op in patch
- * @function addOp
- * @memberof Patch
- * @instance
- * @param {string} opIdentifier uuid or name, e.g. Ops.Math.Sum
- * @param {Object} uiAttribs Attributes
- * @param {string} id
- * @param {boolean} fromDeserialize
- * @param {string} opName e.g. Ops.Math.Sum
- * @example
- * // add invisible op
- * patch.addOp('Ops.Math.Sum', { showUiAttribs: false });
- */
-Patch.prototype.addOp = function (opIdentifier, uiAttribs, id, fromDeserialize, opName)
-{
-    const op = this.createOp(opIdentifier, id, opName);
-
-    if (op)
-    {
-        uiAttribs = uiAttribs || {};
-        if (uiAttribs.hasOwnProperty("errors")) delete uiAttribs.errors;
-        if (uiAttribs.hasOwnProperty("error")) delete uiAttribs.error;
-        uiAttribs.subPatch = uiAttribs.subPatch || 0;
-
-        op.setUiAttribs(uiAttribs);
-        if (op.onCreate) op.onCreate();
-
-        if (op.hasOwnProperty("onAnimFrame")) this.addOnAnimFrame(op);
-        if (op.hasOwnProperty("onMasterVolumeChanged")) this._volumeListeners.push(op);
-
-        if (this._opIdCache[op.id])
-        {
-            this._log.warn("opid with id " + op.id + " already exists in patch!");
-            this.deleteOp(op.id); // strange with subpatch ops: why is this needed, somehow ops get added twice ???.....
-            // return;
-        }
-
-        this.ops.push(op);
-        this._opIdCache[op.id] = op;
-
-        if (this._subPatchCacheAdd) this._subPatchCacheAdd(uiAttribs.subPatch, op);
-        this.emitEvent("onOpAdd", op, fromDeserialize);
-
-        if (op.init) op.init();
-
-        op.emitEvent("init", fromDeserialize);
-    }
-    else
-    {
-        this._log.error("addop: op could not be created: ", opIdentifier);
-    }
-
-    return op;
-};
-
-Patch.prototype.addOnAnimFrame = function (op)
-{
-    for (let i = 0; i < this.animFrameOps.length; i++) if (this.animFrameOps[i] == op) { return; }
-
-    this.animFrameOps.push(op);
-};
-
-Patch.prototype.removeOnAnimFrame = function (op)
-{
-    for (let i = 0; i < this.animFrameOps.length; i++)
-    {
-        if (this.animFrameOps[i] == op)
-        {
-            this.animFrameOps.splice(i, 1);
-            return;
-        }
-    }
-};
-
-Patch.prototype.addOnAnimFrameCallback = function (cb)
-{
-    this.animFrameCallbacks.push(cb);
-};
-
-Patch.prototype.removeOnAnimCallback = function (cb)
-{
-    for (let i = 0; i < this.animFrameCallbacks.length; i++)
-    {
-        if (this.animFrameCallbacks[i] == cb)
-        {
-            this.animFrameCallbacks.splice(i, 1);
-            return;
-        }
-    }
-};
-
-Patch.prototype.deleteOp = function (opid, tryRelink, reloadingOp)
-{
-    let found = false;
-    for (const i in this.ops)
-    {
-        if (this.ops[i].id == opid)
-        {
-            const op = this.ops[i];
-            let reLinkP1 = null;
-            let reLinkP2 = null;
-
-            if (op)
-            {
-                found = true;
-                if (tryRelink)
-                {
-                    if (op.portsIn.length > 0 && op.portsIn[0].isLinked() && (op.portsOut.length > 0 && op.portsOut[0].isLinked()))
-                    {
-                        if (op.portsIn[0].getType() == op.portsOut[0].getType() && op.portsIn[0].links[0])
-                        {
-                            reLinkP1 = op.portsIn[0].links[0].getOtherPort(op.portsIn[0]);
-                            reLinkP2 = op.portsOut[0].links[0].getOtherPort(op.portsOut[0]);
-                        }
-                    }
-                }
-
-                const opToDelete = this.ops[i];
-                opToDelete.removeLinks();
-
-                if (this.onDelete)
-                {
-                    // todo: remove
-                    this._log.warn("deprecated this.onDelete", this.onDelete);
-                    this.onDelete(opToDelete);
-                }
-
-                this.ops.splice(i, 1);
-                opToDelete.emitEvent("delete", opToDelete);
-                this.emitEvent("onOpDelete", opToDelete, reloadingOp);
-
-                if (this.clearSubPatchCache) this.clearSubPatchCache(opToDelete.uiAttribs.subPatch);
-
-                if (opToDelete.onDelete) opToDelete.onDelete(reloadingOp);
-                opToDelete.cleanUp();
-
-                if (reLinkP1 !== null && reLinkP2 !== null)
-                {
-                    this.link(reLinkP1.op, reLinkP1.getName(), reLinkP2.op, reLinkP2.getName());
-                }
-
-                delete this._opIdCache[opid];
-                break;
-            }
-        }
-    }
-
-    if (!found) this._log.warn("core patch deleteop: not found...", opid);
-};
-
-Patch.prototype.getFrameNum = function ()
-{
-    return this._frameNum;
-};
-
-Patch.prototype.emitOnAnimFrameEvent = function (time, delta)
-{
-    time = time || this.timer.getTime();
-
-    for (let i = 0; i < this.animFrameCallbacks.length; ++i)
-        if (this.animFrameCallbacks[i])
-            this.animFrameCallbacks[i](time, this._frameNum, delta);
-
-    for (let i = 0; i < this.animFrameOps.length; ++i)
-        if (this.animFrameOps[i].onAnimFrame)
-            this.animFrameOps[i].onAnimFrame(time, this._frameNum, delta);
-};
-
-Patch.prototype.renderFrame = function (timestamp)
-{
-    this.timer.update(this.reqAnimTimeStamp);
-    this.freeTimer.update(this.reqAnimTimeStamp);
-    const time = this.timer.getTime();
-    const startTime = performance.now();
-    this.cgl.frameStartTime = this.timer.getTime();
-
-    const delta = timestamp - this.reqAnimTimeStamp || timestamp;
-
-    this.emitOnAnimFrameEvent(null, delta);
-
-    this.cgl.profileData.profileFrameDelta = delta;
-    this.reqAnimTimeStamp = timestamp;
-    this.cgl.profileData.profileOnAnimFrameOps = performance.now() - startTime;
-
-    this.emitEvent("onRenderFrame", time);
-
-    this._frameNum++;
-    if (this._frameNum == 1)
-    {
-        if (this.config.onFirstFrameRendered) this.config.onFirstFrameRendered();
-    }
-};
-
-Patch.prototype.exec = function (timestamp)
-{
-    if (!this._renderOneFrame && (this._paused || this.aborted)) return;
-    this.emitEvent("reqAnimFrame");
-    cancelAnimationFrame(this._animReq);
-
-    this.config.fpsLimit = this.config.fpsLimit || 0;
-    if (this.config.fpsLimit)
-    {
-        this._frameInterval = 1000 / this.config.fpsLimit;
-    }
-
-    const now = CABLES.now();
-    const frameDelta = now - this._frameNext;
-
-    if (this.isEditorMode())
-    {
-        if (!this._renderOneFrame)
-        {
-            if (now - this._lastFrameTime >= 500 && this._lastFrameTime !== 0 && !this._frameWasdelayed)
-            {
-                this._lastFrameTime = 0;
-                setTimeout(this.exec.bind(this), 500);
-                this.emitEvent("renderDelayStart");
-                this._frameWasdelayed = true;
-                return;
-            }
-        }
-    }
-
-    if (this._renderOneFrame || this.config.fpsLimit === 0 || frameDelta > this._frameInterval || this._frameWasdelayed)
-    {
-        this.renderFrame(timestamp);
-
-        if (this._frameInterval) this._frameNext = now - (frameDelta % this._frameInterval);
-    }
-
-    if (this._frameWasdelayed)
-    {
-        this.emitEvent("renderDelayEnd");
-        this._frameWasdelayed = false;
-    }
-
-    if (this._renderOneFrame)
-    {
-        if (this.onOneFrameRendered) this.onOneFrameRendered(); // todo remove everywhere and use propper event...
-        this.emitEvent("renderedOneFrame");
-        this._renderOneFrame = false;
-    }
-
-
-    if (this.config.doRequestAnimation) this._animReq = this.cgl.canvas.ownerDocument.defaultView.requestAnimationFrame(this.exec.bind(this));
-};
-
-/**
- * link two ops/ports
- * @function link
- * @memberof Patch
- * @instance
- * @param {Op} op1
- * @param {String} port1Name
- * @param {Op} op2
- * @param {String} port2Name
- * @param {boolean} lowerCase
- * @param {boolean} fromDeserialize
- */
-Patch.prototype.link = function (op1, port1Name, op2, port2Name, lowerCase, fromDeserialize)
-{
-    if (!op1) return this._log.warn("link: op1 is null ");
-    if (!op2) return this._log.warn("link: op2 is null");
-
-    const port1 = op1.getPort(port1Name, lowerCase);
-    const port2 = op2.getPort(port2Name, lowerCase);
-
-    if (!port1) return op1._log.warn("port1 not found! " + port1Name + " (" + op1.objName + ")");
-    if (!port2) return op1._log.warn("port2 not found! " + port2Name + " of " + op2.name + "(" + op2.objName + ")", op2);
-
-    if (!port1.shouldLink(port1, port2) || !port2.shouldLink(port1, port2)) return false;
-
-    if (Link.canLink(port1, port2))
-    {
-        const link = new Link(this);
-        link.link(port1, port2);
-
-        this.emitEvent("onLink", port1, port2, link, fromDeserialize);
-        return link;
-    }
-};
-
-Patch.prototype.serialize = function (options)
-{
-    const obj = {};
-
-    options = options || {};
-    obj.ops = [];
-    obj.settings = this.settings;
-    for (const i in this.ops)
-    {
-        const op = this.ops[i];
-        if (op && op.getSerialized)obj.ops.push(op.getSerialized());
-    }
-
-    cleanJson(obj);
-
-    if (options.asObject) return obj;
-    return JSON.stringify(obj);
-};
-
-Patch.prototype.getOpsByRefId = function (refId)
-{
-    const perf = CABLES.UI.uiProfiler.start("[corepatchetend] getOpsByRefId");
-    const refOps = [];
-    const ops = gui.corePatch().ops;
-    for (let i = 0; i < ops.length; i++)
-        if (ops[i].storage && ops[i].storage.ref == refId) refOps.push(ops[i]);
-    perf.finish();
-    return refOps;
-};
-
-Patch.prototype.getOpById = function (opid)
-{
-    return this._opIdCache[opid];
-};
-
-Patch.prototype.getOpsByName = function (name)
-{
-    // TODO: is this still needed ? unclear behaviour....
-    const arr = [];
-    for (const i in this.ops)
-        if (this.ops[i].name == name) arr.push(this.ops[i]);
-    return arr;
-};
-
-Patch.prototype.getOpsByObjName = function (name)
-{
-    const arr = [];
-    for (const i in this.ops)
-        if (this.ops[i].objName == name) arr.push(this.ops[i]);
-    return arr;
-};
-
-Patch.prototype.getOpsByOpId = function (opid)
-{
-    const arr = [];
-    for (const i in this.ops)
-        if (this.ops[i].opId == opid) arr.push(this.ops[i]);
-    return arr;
-};
-
-Patch.prototype.loadLib = function (which)
-{
-    ajaxSync(
-        "/ui/libs/" + which + ".js",
-        (err, res) =>
-        {
-            const se = document.createElement("script");
-            se.type = "text/javascript";
-            se.text = res;
-            document.getElementsByTagName("head")[0].appendChild(se);
-        },
-        "GET",
-    );
-};
-
-Patch.prototype.getSubPatchOpsByName = function (patchId, objName)
-{
-    const arr = [];
-    for (const i in this.ops)
-        if (this.ops[i].uiAttribs && this.ops[i].uiAttribs.subPatch == patchId && this.ops[i].objName == objName)
-            arr.push(this.ops[i]);
-
-    return arr;
-};
-
-Patch.prototype.getSubPatchOp =
-Patch.prototype.getFirstSubPatchOpByName = function (patchId, objName)
-{
-    for (const i in this.ops)
-        if (this.ops[i].uiAttribs && this.ops[i].uiAttribs.subPatch == patchId && this.ops[i].objName == objName)
-            return this.ops[i];
-
-    return false;
-};
-
-Patch.prototype._addLink = function (opinid, opoutid, inName, outName)
-{
-    return this.link(this.getOpById(opinid), inName, this.getOpById(opoutid), outName, false, true);
-};
-
-Patch.prototype.deSerialize = function (obj, options)
-{
-    options = options || { "genIds": false, "createRef": false };
-    if (this.aborted) return;
-    const newOps = [];
-    const loadingId = this.loading.start("core", "deserialize");
-
-    this.namespace = obj.namespace || "";
-    this.name = obj.name || "";
-
-    if (typeof obj === "string") obj = JSON.parse(obj);
-
-    this.settings = obj.settings;
-
-    this.emitEvent("patchLoadStart");
-
-    obj.ops = obj.ops || [];
-
-    if (window.logStartup)logStartup("add " + obj.ops.length + " ops... ");
-
-    const addedOps = [];
-
-    // add ops...
-    for (let iop = 0; iop < obj.ops.length; iop++)
-    {
-        const start = CABLES.now();
-        const opData = obj.ops[iop];
-        let op = null;
-
-        try
-        {
-            if (opData.opId) op = this.addOp(opData.opId, opData.uiAttribs, opData.id, true, opData.objName);
-            else op = this.addOp(opData.objName, opData.uiAttribs, opData.id, true);
-        }
-        catch (e)
-        {
-            this._log.error("[instancing error] op data:", opData, e);
-            // throw new Error("could not create op by id: <b>" + (opData.objName || opData.opId) + "</b> (" + opData.id + ")");
-        }
-
-        if (op)
-        {
-            addedOps.push(op);
-            if (options.genIds) op.id = shortId();
-            op.portsInData = opData.portsIn;
-            op._origData = JSON.parse(JSON.stringify(opData));
-            op.storage = opData.storage;
-            // if (opData.hasOwnProperty("disabled"))op.setEnabled(!opData.disabled);
-
-            for (const ipi in opData.portsIn)
-            {
-                const objPort = opData.portsIn[ipi];
-                if (objPort && objPort.hasOwnProperty("name"))
-                {
-                    const port = op.getPort(objPort.name);
-
-                    if (port && (port.uiAttribs.display == "bool" || port.uiAttribs.type == "bool") && !isNaN(objPort.value)) objPort.value = objPort.value == true ? 1 : 0;
-                    if (port && objPort.value !== undefined && port.type != CONSTANTS.OP.OP_PORT_TYPE_TEXTURE) port.set(objPort.value);
-
-                    if (port)
-                    {
-                        port.deSerializeSettings(objPort);
-                    }
-                    else
-                    {
-                        // if (port.uiAttribs.hasOwnProperty("title"))
-                        // {
-                        //     op.preservedPortTitles = op.preservedPortTitles || {};
-                        //     op.preservedPortTitles[port.name] = port.uiAttribs.title;
-                        // }
-                        op.preservedPortValues = op.preservedPortValues || {};
-                        op.preservedPortValues[objPort.name] = objPort.value;
-                    }
-                }
-            }
-
-            for (const ipo in opData.portsOut)
-            {
-                const objPort = opData.portsOut[ipo];
-                if (objPort && objPort.hasOwnProperty("name"))
-                {
-                    const port2 = op.getPort(objPort.name);
-
-                    if (port2)
-                    {
-                        port2.deSerializeSettings(objPort);
-
-                        if (port2.uiAttribs.hasOwnProperty("title"))
-                        {
-                            op.preservedPortTitles = op.preservedPortTitles || {};
-                            op.preservedPortTitles[port2.name] = port2.uiAttribs.title;
-                        }
-
-
-                        if (port2.type != CONSTANTS.OP.OP_PORT_TYPE_TEXTURE && objPort.hasOwnProperty("value"))
-                            port2.set(obj.ops[iop].portsOut[ipo].value);
-
-                        if (objPort.expose) port2.setUiAttribs({ "expose": true });
-                    }
-                }
-            }
-            newOps.push(op);
-        }
-
-        const timeused = Math.round(100 * (CABLES.now() - start)) / 100;
-        if (!this.silent && timeused > 5) console.log("long op init ", obj.ops[iop].objName, timeused);
-    }
-    if (window.logStartup)logStartup("add ops done");
-
-    for (const i in this.ops)
-    {
-        if (this.ops[i].onLoadedValueSet)
-        {
-            this.ops[i].onLoadedValueSet(this.ops[i]._origData);
-            this.ops[i].onLoadedValueSet = null;
-            this.ops[i]._origData = null;
-        }
-        this.ops[i].emitEvent("loadedValueSet");
-    }
-
-    if (window.logStartup)logStartup("creating links");
-
-    if (options.opsCreated)options.opsCreated(addedOps);
-    // create links...
-    if (obj.ops)
-    {
-        for (let iop = 0; iop < obj.ops.length; iop++)
-        {
-            if (obj.ops[iop].portsIn)
-            {
-                for (let ipi2 = 0; ipi2 < obj.ops[iop].portsIn.length; ipi2++)
-                {
-                    if (obj.ops[iop].portsIn[ipi2] && obj.ops[iop].portsIn[ipi2].links)
-                    {
-                        for (let ili = 0; ili < obj.ops[iop].portsIn[ipi2].links.length; ili++)
-                        {
-                            const l = this._addLink(
-                                obj.ops[iop].portsIn[ipi2].links[ili].objIn,
-                                obj.ops[iop].portsIn[ipi2].links[ili].objOut,
-                                obj.ops[iop].portsIn[ipi2].links[ili].portIn,
-                                obj.ops[iop].portsIn[ipi2].links[ili].portOut);
-
-                            // const took = performance.now - startTime;
-                            // if (took > 100)console.log(obj().ops[iop].portsIn[ipi2].links[ili].objIn, obj.ops[iop].portsIn[ipi2].links[ili].objOut, took);
-                        }
-                    }
-                }
-            }
-            if (obj.ops[iop].portsOut)
-                for (let ipi2 = 0; ipi2 < obj.ops[iop].portsOut.length; ipi2++)
-                    if (obj.ops[iop].portsOut[ipi2] && obj.ops[iop].portsOut[ipi2].links)
-                    {
-                        for (let ili = 0; ili < obj.ops[iop].portsOut[ipi2].links.length; ili++)
-                        {
-                            if (obj.ops[iop].portsOut[ipi2].links[ili])
-                            {
-                                if (obj.ops[iop].portsOut[ipi2].links[ili].subOpRef)
-                                {
-                                    // lost link
-                                    const outOp = this.getOpById(obj.ops[iop].portsOut[ipi2].links[ili].objOut);
-                                    let dstOp = null;
-                                    let theSubPatch = 0;
-
-                                    for (let i = 0; i < this.ops.length; i++)
-                                    {
-                                        if (
-                                            this.ops[i].storage &&
-                                            this.ops[i].storage.ref == obj.ops[iop].portsOut[ipi2].links[ili].subOpRef &&
-                                            outOp.uiAttribs.subPatch == this.ops[i].uiAttribs.subPatch
-                                        )
-                                        {
-                                            theSubPatch = this.ops[i].patchId.get();
-                                            break;
-                                        }
-                                    }
-
-                                    for (let i = 0; i < this.ops.length; i++)
-                                    {
-                                        if (
-                                            this.ops[i].storage &&
-                                            this.ops[i].storage.ref == obj.ops[iop].portsOut[ipi2].links[ili].refOp &&
-                                            this.ops[i].uiAttribs.subPatch == theSubPatch)
-                                        {
-                                            dstOp = this.ops[i];
-                                            break;
-                                        }
-                                    }
-
-                                    if (!dstOp) this._log.warn("could not find op for lost link");
-                                    else
-                                    {
-                                        const l = this._addLink(
-                                            dstOp.id,
-                                            obj.ops[iop].portsOut[ipi2].links[ili].objOut,
-
-                                            obj.ops[iop].portsOut[ipi2].links[ili].portIn,
-                                            obj.ops[iop].portsOut[ipi2].links[ili].portOut);
-                                    }
-                                }
-                                else
-                                {
-                                    const l = this._addLink(obj.ops[iop].portsOut[ipi2].links[ili].objIn, obj.ops[iop].portsOut[ipi2].links[ili].objOut, obj.ops[iop].portsOut[ipi2].links[ili].portIn, obj.ops[iop].portsOut[ipi2].links[ili].portOut);
-
-                                    if (!l)
-                                    {
-                                        const op1 = this.getOpById(obj.ops[iop].portsOut[ipi2].links[ili].objIn);
-                                        const op2 = this.getOpById(obj.ops[iop].portsOut[ipi2].links[ili].objOut);
-
-                                        if (!op1)console.log("could not find link op1");
-                                        if (!op2)console.log("could not find link op2");
-
-                                        const p1Name = obj.ops[iop].portsOut[ipi2].links[ili].portIn;
-
-                                        if (op1 && !op1.getPort(p1Name))
-                                        {
-                                            // console.log("PRESERVE port 1 not found", p1Name);
-
-                                            op1.preservedPortLinks[p1Name] = op1.preservedPortLinks[p1Name] || [];
-                                            op1.preservedPortLinks[p1Name].push(obj.ops[iop].portsOut[ipi2].links[ili]);
-                                        }
-
-                                        const p2Name = obj.ops[iop].portsOut[ipi2].links[ili].portOut;
-                                        if (op2 && !op2.getPort(p2Name))
-                                        {
-                                            // console.log("PRESERVE port 2 not found", obj.ops[iop].portsOut[ipi2].links[ili].portOut);
-                                            op2.preservedPortLinks[p1Name] = op2.preservedPortLinks[p1Name] || [];
-                                            op2.preservedPortLinks[p1Name].push(obj.ops[iop].portsOut[ipi2].links[ili]);
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-        }
-    }
-
-    if (window.logStartup)logStartup("calling ops onloaded");
-
-    for (const i in this.ops)
-    {
-        if (this.ops[i].onLoaded)
-        {
-            // TODO: deprecate!!!
-            this.ops[i].onLoaded();
-            this.ops[i].onLoaded = null;
-        }
-    }
-
-    if (window.logStartup)logStartup("initializing ops...");
-    for (const i in this.ops)
-    {
-        if (this.ops[i].init)
-        {
-            try
-            {
-                this.ops[i].init();
-                this.ops[i].init = null;
-            }
-            catch (e)
-            {
-                console.error("op.init crash", e);
-            }
-        }
-    }
-
-    if (window.logStartup)logStartup("initializing vars...");
-
-    if (this.config.variables)
-        for (const varName in this.config.variables)
-            this.setVarValue(varName, this.config.variables[varName]);
-
-    if (window.logStartup)logStartup("initializing var ports");
-
-    for (const i in this.ops)
-    {
-        this.ops[i].initVarPorts();
-        delete this.ops[i].uiAttribs.pasted;
-    }
-
-    setTimeout(() => { this.loading.finished(loadingId); }, 100);
-
-    if (this.config.onPatchLoaded) this.config.onPatchLoaded(this);
-
-    this.deSerialized = true;
-    this.emitEvent("patchLoadEnd", newOps, obj, options.genIds);
-};
-
-Patch.prototype.profile = function (enable)
-{
-    this.profiler = new Profiler(this);
-    for (const i in this.ops)
-    {
-        this.ops[i].profile(enable);
-    }
-};
-
-// ----------------------
-
-/**
- * set variable value
- * @function setVariable
- * @memberof Patch
- * @instance
- * @param {String} name of variable
- * @param {Number|String|Boolean} val value
- */
-Patch.prototype.setVariable = function (name, val)
-{
-    // if (this._variables.hasOwnProperty(name))
-    if (this._variables[name] !== undefined)
-    {
-        this._variables[name].setValue(val);
-    }
-    else
-    {
-        this._log.warn("variable " + name + " not found!");
-    }
-};
-
-Patch.prototype._sortVars = function ()
-{
-    if (!this.isEditorMode()) return;
-    const ordered = {};
-    Object.keys(this._variables).sort(
-        (a, b) =>
-        { return a.localeCompare(b, "en", { "sensitivity": "base" }); }
-    ).forEach((key) =>
-    {
-        ordered[key] = this._variables[key];
-    });
-    this._variables = ordered;
-};
-
-/**
- * has variable
- * @function hasVariable
- * @memberof Patch
- * @instance
- * @param {String} name of variable
- */
-Patch.prototype.hasVar = function (name)
-{
-    return this._variables[name] !== undefined;
-
-    // return this._variables.hasOwnProperty(name);
-};
-
-// used internally
-Patch.prototype.setVarValue = function (name, val, type)
-{
-    if (this.hasVar(name))
-    {
-        this._variables[name].setValue(val);
-    }
-    else
-    {
-        this._variables[name] = new core_variable(name, val, type);
-        this._sortVars();
-        this.emitEvent("variablesChanged");
-    }
-    return this._variables[name];
-};
-// old?
-Patch.prototype.getVarValue = function (name, val)
-{
-    if (this._variables.hasOwnProperty(name)) return this._variables[name].getValue();
-};
-
-/**
- * @function getVar
- * @memberof Patch
- * @instance
- * @param {String} name
- * @return {Variable} variable
- */
-Patch.prototype.getVar = function (name)
-{
-    if (this._variables.hasOwnProperty(name)) return this._variables[name];
-};
-
-
-Patch.prototype.deleteVar = function (name)
-{
-    for (let i = 0; i < this.ops.length; i++)
-        for (let j = 0; j < this.ops[i].portsIn.length; j++)
-            if (this.ops[i].portsIn[j].getVariableName() == name)
-                this.ops[i].portsIn[j].setVariable(null);
-
-    delete this._variables[name];
-    this.emitEvent("variableDeleted", name);
-    this.emitEvent("variablesChanged");
-};
-
-/**
- * @function getVars
- * @memberof Patch
- * @instance
- * @param t
- * @return {Array<Variable>} variables
- * @function
- */
-Patch.prototype.getVars = function (t)
-{
-    if (t === undefined) return this._variables;
-
-    const vars = [];
-    if (t == CABLES.OP_PORT_TYPE_STRING) t = "string";
-    if (t == CABLES.OP_PORT_TYPE_VALUE) t = "number";
-    if (t == CABLES.OP_PORT_TYPE_ARRAY) t = "array";
-    if (t == CABLES.OP_PORT_TYPE_OBJECT) t = "object";
-
-    for (const i in this._variables)
-    {
-        if (!this._variables[i].type || this._variables[i].type == t) vars.push(this._variables[i]);
-    }
-    return vars;
-};
-
-
-/**
- * @function preRenderOps
- * @memberof Patch
- * @instance
- * @description invoke pre rendering of ops
- * @function
- */
-Patch.prototype.preRenderOps = function ()
-{
-    this._log.log("prerendering...");
-
-    for (let i = 0; i < this.ops.length; i++)
-    {
-        if (this.ops[i].preRender)
-        {
-            this.ops[i].preRender();
-            this._log.log("prerender " + this.ops[i].objName);
-        }
-    }
-};
-
-/**
- * @function dispose
- * @memberof Patch
- * @instance
- * @description stop, dispose and cleanup patch
- */
-Patch.prototype.dispose = function ()
-{
-    this.pause();
-    this.clear();
-    this.cgl.dispose();
-};
-
-Patch.prototype.pushTriggerStack = function (p)
-{
-    this._triggerStack.push(p);
-};
-
-Patch.prototype.popTriggerStack = function ()
-{
-    this._triggerStack.pop();
-};
-
-Patch.prototype.printTriggerStack = function ()
-{
-    if (this._triggerStack.length == 0)
-    {
-        // console.log("stack length", this._triggerStack.length); // eslint-disable-line
-        return;
-    }
-    console.groupCollapsed( // eslint-disable-line
-        "trigger port stack " + this._triggerStack[this._triggerStack.length - 1].op.objName + "." + this._triggerStack[this._triggerStack.length - 1].name,
-    );
-
-    const rows = [];
-    for (let i = 0; i < this._triggerStack.length; i++)
-    {
-        rows.push(i + ". " + this._triggerStack[i].op.objName + " " + this._triggerStack[i].name);
-    }
-
-    console.table(rows); // eslint-disable-line
-    console.groupEnd(); // eslint-disable-line
-};
-
-/**
- * returns document object of the patch could be != global document object when opening canvas ina popout window
- * @function getDocument
- * @memberof Patch
- * @instance
- * @return {Object} document
- */
-Patch.prototype.getDocument = function ()
-{
-    return this.cgl.canvas.ownerDocument;
-};
 
 Patch.replaceOpIds = function (json, options)
 {
@@ -16451,7 +16543,6 @@ Patch.replaceOpIds = function (json, options)
 
     return json;
 };
-
 /**
  * remove an eventlistener
  * @instance
@@ -17148,7 +17239,14 @@ class cgp_uniform_Uniform extends cg_uniform
         super(__shader, __type, __name, _value, _port2, _port3, _port4, _structUniformName, _structName, _propertyName);
         this._cgp = __shader._cgp;
 
-        if (this.getType() == "t" && !_value) this._value = this._cgp.getEmptyTexture();
+        if (!_value)
+        {
+            // if (this.getType() == "m4") this._value = mat4.create();
+            if (this.getType() == "t") this._value = this._cgp.getEmptyTexture();
+            // else if (this.getType() == "2f") this._value = [0, 0];
+            // else if (this.getType() == "4f") this._value = [0, 1, 0, 1];
+            // else if (this.getType() == "3f") this._value = [0, 1, 0];
+        }
 
         this.gpuBuffer = null;
     }
@@ -17190,6 +17288,11 @@ class cgp_uniform_Uniform extends cg_uniform
 
     setValue4F(v)
     {
+        if (v[0] == undefined)
+        {
+            this._log.stack("uniform value undefined");
+            console.error("uniform value undefined");
+        }
         this.needsUpdate = true;
         this._value = v;
     }
@@ -17259,6 +17362,21 @@ class cgp_uniform_Uniform extends cg_uniform
         }
     }
 
+    getWgslTypeStr()
+    {
+        if (this._type == "m4") return "mat4x4f";
+        if (this._type == "4f") return "vec4f";
+        if (this._type == "3f") return "vec3f";
+        if (this._type == "2f") return "vec2f";
+        if (this._type == "f") return "float";
+        if (this._type == "f[]") return "array<vec4f>";
+        if (this._type == "i") return "int";
+        if (this._type == "sampler") return "sampler";
+        if (this._type == "t") return "texture_2d<f32>";
+        this._log.warn("unknown type getWgslTypeStr", this._type);
+        return "???";
+    }
+
     getSizeBytes()
     {
         const bytesPerFloat = 4;
@@ -17278,6 +17396,17 @@ class cgp_uniform_Uniform extends cg_uniform
 
         this._log.warn("unknown type getSizeBytes", this._type);
         return 4;
+    }
+
+    copy(newShader)
+    {
+        const uni = new cgp_uniform_Uniform(newShader, this._type, this._name, this._value, this._port2, this._port3, this._port4, this._structUniformName, this._structName, this._propertyName);
+        uni.shaderType = this.shaderType;
+
+        console.log(this._name, this._value, uni._value);
+
+
+        return uni;
     }
 }
 
@@ -17400,6 +17529,8 @@ class GPUBuffer extends EventTarget
             this._gpuBuffer = this._cgp.device.createBuffer(this._buffCfg);
         }
 
+        // if (!isNaN(this.floatArr[0]))console.log("shit", this._name);
+
         if (this.floatArr)
             this._cgp.device.queue.writeBuffer(
                 this._gpuBuffer,
@@ -17414,6 +17545,11 @@ class GPUBuffer extends EventTarget
         this._cgp.popErrorScope();
 
         this.needsUpdate = false;
+    }
+
+    get name()
+    {
+        return this._name;
     }
 
     get gpuBuffer()
@@ -17455,27 +17591,25 @@ class Binding
      * @param {string} name
      * @param {any} options={}
      */
-    constructor(cgp, idx, name, options = {})
+    constructor(cgp, name, options = {})
     {
-        this.idx = idx;
+        if (typeof options != "object") this._log.error("binding options is not an object");
+        this._index = -1;
+
         this._name = name;
         this._cgp = cgp;
         this._log = new Logger("cgp_binding");
         this.uniforms = [];
-        // this.cGpuBuffer = null;
         this.cGpuBuffers = [];
-
+        this._options = options;
         this.shader = null;
-
-        if (typeof options != "object") this._log.error("binding options is not an object");
-
-
         this.bindingInstances = [];
         this.stageStr = options.stage;
         this.bindingType = options.bindingType || "uniform"; // "uniform", "storage", "read-only-storage",
 
-        this.stage = GPUShaderStage.VERTEX;
         if (this.stageStr == "frag") this.stage = GPUShaderStage.FRAGMENT;
+        else this.stage = GPUShaderStage.VERTEX;
+        if (options.hasOwnProperty("index")) this._index = options.index;
 
         if (options.shader) this.shader = options.shader;
 
@@ -17483,16 +17617,55 @@ class Binding
         this.isValid = true;
         this.changed = 0;
 
-        if (options.shader)
+        if (this.shader)
         {
-            if (this.stageStr == "frag") options.shader.bindingsFrag.push(this);
-            if (this.stageStr == "vert") options.shader.bindingsVert.push(this);
+            if (this.stageStr == "frag") this.shader.bindingsFrag.push(this);
+            if (this.stageStr == "vert") this.shader.bindingsVert.push(this);
+            if (this._index == -1) this._index = this.shader.getNewBindingIndex();
         }
+
+        if (this._index == -1) this._log.warn("binding could not get an index", this._name);
 
         this._cgp.on("deviceChange", () =>
         {
             // this.reInit();
         });
+    }
+
+    isStruct()
+    {
+        if (this.uniforms.length == 0) return false;
+
+        if (this.uniforms.length == 1)
+        {
+            if (this.uniforms[0].type == "t" || this.uniforms[0].type == "sampler") return false;
+            if (this.bindingType != "uniform") return false;
+        }
+
+        return true;
+    }
+
+    copy(newShader)
+    {
+        console.log("copy binding...");
+        const options = {};
+
+        for (const i in this._options)
+            options[i] = this._options[i];
+
+        options.shader = newShader;
+
+        let binding = new Binding(this._cgp, this._name, options);
+
+        for (let i = 0; i < this.uniforms.length; i++)
+        {
+            binding.addUniform(newShader.getUniform(this.uniforms[i].name)); // .copy(newShader)
+        }
+
+
+
+
+        return binding;
     }
 
     addUniform(uni)
@@ -17513,17 +17686,61 @@ class Binding
         return size;
     }
 
+    getShaderHeaderCode()
+    {
+        let str = "";
+
+        let typeStr = "strct_" + this._name;
+        let name = this._name;
+
+        if (this.uniforms.length === 0) return "// no uniforms in bindinggroup...?\n";
+
+
+        str += "// " + this.uniforms.length + " uniforms\n";
+
+        if (this.isStruct())
+        {
+            str += "struct " + typeStr + "\n";
+            str += "{\n";
+            for (let i = 0; i < this.uniforms.length; i++)
+            {
+                str += "    " + this.uniforms[i].name + ": " + this.uniforms[i].getWgslTypeStr();
+                if (i != this.uniforms.length - 1)str += ",";
+                str += "\n";
+            }
+            str += "};\n";
+        }
+        else
+        {
+            typeStr = this.uniforms[0].getWgslTypeStr();
+            name = this.uniforms[0].name;
+        }
+
+        str += "@group(0) ";
+        str += "@binding(" + this._index + ") ";
+
+        if (this.isStruct())
+        {
+            str += "var<" + this.bindingType + "> ";
+        }
+        else if (this.bindingType == "read-only-storage")str += "var<storage,read> ";
+        else str += "var ";
+
+        str += name + ": " + typeStr + ";\n";
+
+        return str;
+    }
+
+
     getBindingGroupLayoutEntry()
     {
         let label = "layout " + this._name + " [";
-        for (let i = 0; i < this.uniforms.length; i++)
-            label += this.uniforms[i].getName() + ",";
-
+        for (let i = 0; i < this.uniforms.length; i++) label += this.uniforms[i].getName() + ",";
         label += "]";
 
         const o = {
             "label": label,
-            "binding": this.idx,
+            "binding": this._index,
             "visibility": this.stage,
             "size": this.getSizeBytes()
         };
@@ -17551,10 +17768,16 @@ class Binding
 
         const o = {
             "label": this._name + " binding",
-            "binding": this.idx,
+            "binding": this._index,
             "size": this.getSizeBytes(),
             "visibility": this.stage,
         };
+
+        if (this.uniforms.length == 0)
+        {
+            console.log("binding uniforms length 0");
+            return;
+        }
 
         if (this.uniforms.length == 1 && this.uniforms[0].getType() == "t")
         {
@@ -17563,29 +17786,22 @@ class Binding
         }
         else if (this.uniforms.length == 1 && this.uniforms[0].getType() == "sampler")
         {
-            const sampler = this.uniforms[0]._cgp.device.createSampler({
-                "addressModeU": "repeat",
-                "addressModeV": "repeat",
+            let smplDesc = {
+                "addressModeU": "mirror-repeat",
+                "addressModeV": "mirror-repeat",
                 "magFilter": "linear",
                 "minFilter": "linear",
                 "mipmapFilter": "linear",
-            });
+            };
+
+            if (this.uniforms[0].getValue()) smplDesc = this.uniforms[0].getValue().getSampler();
+
+            const sampler = this.uniforms[0]._cgp.device.createSampler(smplDesc);
             o.resource = sampler;
         }
         else
         {
-            let buffCfg = {
-                "label": this._name,
-                "size": this.getSizeBytes(),
-                "usage": GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
-            };
-
-            if (this.bindingType == "read-only-storage" || this.bindingType == "storage") buffCfg.usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
-
-            if (this.cGpuBuffers[inst]) this.cGpuBuffers[inst].dispose();
-            this.cGpuBuffers[inst] = new GPUBuffer(this._cgp, "buff", null, { "buffCfg": buffCfg });
-
-            if (this.uniforms[0].gpuBuffer) this.cGpuBuffers[inst] = this.uniforms[0].gpuBuffer;
+            this._createCgpuBuffer(inst);
 
             o.resource = {
                 "buffer": this.cGpuBuffers[inst].gpuBuffer,
@@ -17598,6 +17814,22 @@ class Binding
         this.bindingInstances[inst] = o;
 
         return o;
+    }
+
+    _createCgpuBuffer(inst)
+    {
+        let buffCfg = {
+            "label": this._name,
+            "size": this.getSizeBytes(),
+            "usage": GPUBufferUsage.COPY_DST | GPUBufferUsage.UNIFORM,
+        };
+
+        if (this.bindingType == "read-only-storage" || this.bindingType == "storage") buffCfg.usage = GPUBufferUsage.STORAGE | GPUBufferUsage.COPY_DST;
+
+        if (this.cGpuBuffers[inst]) this.cGpuBuffers[inst].dispose();
+        this.cGpuBuffers[inst] = new GPUBuffer(this._cgp, this._name + " buff", null, { "buffCfg": buffCfg });
+
+        if (this.uniforms.length > 0 && this.uniforms[0].gpuBuffer) this.cGpuBuffers[inst] = this.uniforms[0].gpuBuffer;
     }
 
 
@@ -17629,7 +17861,8 @@ class Binding
                 }
                 else
                 {
-                    b.resource = CABLES.errorTexture.createView();
+                    console.log("uni t has no gputexture");
+                    b.resource = this._cgp.getErrorTexture().createView();
                 }
 
             if (this._cgp.frameStore.branchProfiler) this._cgp.frameStore.branchStack.pop();
@@ -17645,10 +17878,13 @@ class Binding
             let info = ["stage " + this.stageStr + " / inst " + inst];
 
             // console.log("B",this.);
-
-
             // update uniform values to buffer
             const s = this.getSizeBytes() / 4;
+
+            // if (!this.cGpuBuffers[inst])
+            // this._createCgpuBuffer(inst);
+            // this.cGpuBuffers[inst] = new GPUBuffer(this._cgp, "buff", null, { "buffCfg": buffCfg });
+
             this.cGpuBuffers[inst].setLength(s);
 
             let off = 0;
@@ -17656,10 +17892,15 @@ class Binding
             {
                 info.push(this.uniforms[i].getName() + " " + this.uniforms[i].getValue());
                 this.uniforms[i].copyToBuffer(this.cGpuBuffers[inst].floatArr, off); // todo: check if uniform changed?
+
+                // if (isNaN(this.cGpuBuffers[inst].floatArr[0]))
+                // {
+                // console.log("shitttttttt", this.cGpuBuffers[inst].floatArr[0], this.uniforms[i].getName(), this.cGpuBuffers[inst].name, this.uniforms[i]);
+                // }
+
                 off += this.uniforms[i].getSizeBytes() / 4;
             }
             if (this._cgp.frameStore.branchProfiler) this._cgp.frameStore.branchStack.push("uni buff", info);
-
 
             // console.log("upodate", inst);
 
@@ -17702,10 +17943,13 @@ class cgp_shader_Shader extends CgShader
         this._compileReason = "";
         this.gpuShaderModule = null;
         this._needsRecompile = true;
+        this.bindingCounter = 0;
+        this.bindCountlastFrame = -1;
+        this._bindingIndexCount = 0;
 
-        this.defaultBindingVert = new Binding(_cgp, 0, "defaultVert", { "stage": "vert", "bindingType": "uniform" });
-        this.defaultBindingFrag = new Binding(_cgp, 1, "defaultFrag", { "stage": "frag", "bindingType": "uniform" });
-        this.defaultBindingComp = new Binding(_cgp, 1, "defaultComp", { "bindingType": "uniform" });
+        this.defaultBindingVert = new Binding(_cgp, "vsUniforms", { "stage": "vert", "bindingType": "uniform", "index": this._bindingIndexCount++ });
+        this.defaultBindingFrag = new Binding(_cgp, "fsUniforms", { "stage": "frag", "bindingType": "uniform", "index": this._bindingIndexCount++ });
+        this.defaultBindingComp = new Binding(_cgp, "computeUniforms", { "bindingType": "uniform", "index": this._bindingIndexCount++ });
         this.bindingsFrag = [this.defaultBindingFrag];
         this.bindingsVert = [this.defaultBindingVert];
         this.bindingsComp = [this.defaultBindingComp];
@@ -17721,8 +17965,6 @@ class cgp_shader_Shader extends CgShader
             this._tempModelViewMatrix = mat4.create();
         }
 
-        this.bindingCounter = 0;
-        this.bindCountlastFrame = -1;
 
         this._src = "";
 
@@ -17765,6 +18007,12 @@ class cgp_shader_Shader extends CgShader
         this._compileReason = why;
     }
 
+    getNewBindingIndex()
+    {
+        return ++this._bindingIndexCount;
+    }
+
+
     setSource(src)
     {
         this._src = src;
@@ -17772,18 +18020,85 @@ class cgp_shader_Shader extends CgShader
         this._needsRecompile = true;
     }
 
-    compile()
+    _replaceMods(vs)
     {
-        this._isValid = true;
-        this._cgp.pushErrorScope("cgp_shader " + this._name);
+        let srcHeadVert = "";
+        for (let i = 0; i < this._moduleNames.length; i++)
+        {
+            let srcVert = "";
 
+            for (let j = 0; j < this._modules.length; j++)
+            {
+                const mod = this._modules[j];
+                if (mod.name == this._moduleNames[i])
+                {
+                    srcHeadVert += "\n//---- MOD: group:" + mod.group + ": idx:" + j + " - prfx:" + mod.prefix + " - " + mod.title + " ------\n";
+
+                    srcVert += "\n\n//---- MOD: " + mod.title + " / " + mod.priority + " ------\n";
+
+                    if (mod.attributes)
+                        for (let k = 0; k < mod.attributes.length; k++)
+                        {
+                            const r = this._getAttrSrc(mod.attributes[k], false);
+                            if (r.srcHeadVert)srcHeadVert += r.srcHeadVert;
+                            if (r.srcVert)srcVert += r.srcVert;
+                        }
+
+                    srcHeadVert += mod.srcHead || "";
+                    srcVert += mod.srcBody || "";
+
+                    srcHeadVert += "\n//---- end mod ------\n";
+
+                    srcVert += "\n//---- end mod ------\n";
+
+                    srcVert = srcVert.replace(/{{mod}}/g, mod.prefix);
+                    srcHeadVert = srcHeadVert.replace(/{{mod}}/g, mod.prefix);
+
+                    srcVert = srcVert.replace(/MOD_/g, mod.prefix);
+                    srcHeadVert = srcHeadVert.replace(/MOD_/g, mod.prefix);
+                }
+            }
+
+            vs = vs.replace("{{" + this._moduleNames[i] + "}}", srcVert);
+        }
+
+        vs = vs.replace("{{MODULES_HEAD}}", srcHeadVert);
+        return vs;
+    }
+
+    getProcessedSource()
+    {
         const defs = {};
         for (let i = 0; i < this._defines.length; i++)
             defs[this._defines[i][0]] = this._defines[i][1] || true;
 
-        const src = preproc(this._src, defs);
 
-        this.gpuShaderModule = this._cgp.device.createShaderModule({ "code": src, "label": this._name });
+        let src = preproc(this._src, defs);
+
+        let bindingsHeadVert = "";
+        for (let i = 0; i < this.bindingsFrag.length; i++)
+            bindingsHeadVert += this.bindingsFrag[i].getShaderHeaderCode();
+
+        let bindingsHeadFrag = "";
+        for (let i = 0; i < this.bindingsVert.length; i++)
+            bindingsHeadFrag += this.bindingsVert[i].getShaderHeaderCode();
+
+
+
+        src = bindingsHeadFrag + "\n\n////////////////\n\n" + bindingsHeadVert + "\n\n////////////////\n\n" + src;
+        src = this._replaceMods(src);
+
+        return src;
+        // console.log("----------------\n", src, "\n----------------------------");
+    }
+
+    compile()
+    {
+        console.log("compile", this._compileReason);
+        this._isValid = true;
+        this._cgp.pushErrorScope("cgp_shader " + this._name);
+        // console.log(this.getProcessedSource());
+        this.gpuShaderModule = this._cgp.device.createShaderModule({ "code": this.getProcessedSource(), "label": this._name });
         this._cgp.popErrorScope(this.error.bind(this));
         this._needsRecompile = false;
 
@@ -17918,10 +18233,85 @@ class cgp_shader_Shader extends CgShader
             if (this._uniforms[i].getName() == name) return this._uniforms[i];
         }
     }
+
+    /**
+     * copy current shader
+     * @function copy
+     * @memberof Shader
+     * @instance
+     * @returns newShader
+     */
+    copy()
+    {
+        const shader = new cgp_shader_Shader(this._cgp, this._name + " copy");
+        shader.setSource(this._src);
+
+        shader._modules = JSON.parse(JSON.stringify(this._modules));
+        shader._defines = JSON.parse(JSON.stringify(this._defines));
+
+        shader._modGroupCount = this._modGroupCount;
+        shader._moduleNames = this._moduleNames;
+
+        // shader.glPrimitive = this.glPrimitive;
+        // shader.offScreenPass = this.offScreenPass;
+        // shader._extensions = this._extensions;
+        // shader.wireframe = this.wireframe;
+        // shader._attributes = this._attributes;
+
+        for (let i = 0; i < this._uniforms.length; i++) this._uniforms[i].copy(shader);
+
+        shader.bindingsFrag = [];
+        for (let i = 0; i < this.bindingsFrag.length; i++) this.bindingsFrag[i].copy(shader);
+        shader.defaultBindingFrag = this.bindingsFrag[0];
+
+        shader.bindingsVert = [];
+        for (let i = 0; i < this.bindingsVert.length; i++) this.bindingsVert[i].copy(shader);
+        shader.defaultBindingVert = this.bindingsVert[0];
+
+        shader.bindingsComp = [];
+        for (let i = 0; i < this.bindingsComp.length; i++) this.bindingsComp[i].copy(shader);
+        shader.defaultBindingComp = this.bindingsComp[0];
+
+        console.log("copyyyyyyyyyy", shader.bindingsVert, this.bindingsVert);
+
+        this.setWhyCompile("copy");
+        shader._needsRecompile = true;
+        return shader;
+    }
+
+
+    /**
+     * copy all uniform values from another shader
+     * @function copyUniforms
+     * @memberof Shader
+     * @instance
+     * @param origShader uniform values will be copied from this shader
+     */
+    copyUniformValues(origShader)
+    {
+        for (let i = 0; i < origShader._uniforms.length; i++)
+        {
+            if (!this._uniforms[i])
+            {
+                this._log.log("unknown uniform?!");
+                continue;
+            }
+            this.getUniform(origShader._uniforms[i].getName()).set(origShader._uniforms[i].getValue());
+        }
+
+        // this.popTextures();
+        // for (let i = 0; i < origShader._textureStackUni.length; i++)
+        // {
+        //     this._textureStackUni[i] = origShader._textureStackUni[i];
+        //     this._textureStackTex[i] = origShader._textureStackTex[i];
+        //     this._textureStackType[i] = origShader._textureStackType[i];
+        //     this._textureStackTexCgl[i] = origShader._textureStackTexCgl[i];
+        // }
+    }
 }
 
 ;// CONCATENATED MODULE: ./src/core/cgp/cgl_shader_default.wgsl
-/* harmony default export */ const cgl_shader_default = ("struct VSUniforms\n{\n    modelMatrix: mat4x4<f32>,\n    viewMatrix: mat4x4<f32>,\n    projMatrix: mat4x4<f32>,\n};\n\nstruct FSUniforms\n{\n    color:vec4<f32>\n};\n\n@group(0) @binding(0) var<uniform> vsUniforms: VSUniforms;\n@group(0) @binding(1) var<uniform> fsUniforms: FSUniforms;\n\nstruct MyVSInput\n{\n    @location(0) position: vec3<f32>,\n    @location(1) normal: vec3<f32>,\n    @location(2) texcoord: vec2<f32>,\n};\n\nstruct MyVSOutput\n{\n    @builtin(position) position: vec4<f32>,\n    @location(0) normal: vec3<f32>,\n    @location(1) texcoord: vec2<f32>,\n};\n\n@vertex\nfn myVSMain(v: MyVSInput) -> MyVSOutput\n{\n    var vsOut: MyVSOutput;\n    var pos =vec4<f32>(v.position, 1.0);\n\n    var mvMatrix=vsUniforms.viewMatrix * vsUniforms.modelMatrix;\n    vsOut.position = vsUniforms.projMatrix * mvMatrix * pos;\n\n    vsOut.normal = v.normal;\n    vsOut.texcoord = v.texcoord;\n    return vsOut;\n}\n\n@fragment\nfn myFSMain(v: MyVSOutput) -> @location(0) vec4<f32>\n{\n    return fsUniforms.color+vec4<f32>(.5,.5,.5,1.0);\n}\n\n");
+/* harmony default export */ const cgl_shader_default = ("\nstruct MyVSInput\n{\n    @location(0) position: vec3<f32>,\n    @location(1) normal: vec3<f32>,\n    @location(2) texcoord: vec2<f32>,\n};\n\nstruct MyVSOutput\n{\n    @builtin(position) position: vec4<f32>,\n    @location(0) normal: vec3<f32>,\n    @location(1) texcoord: vec2<f32>,\n};\n\n@vertex\nfn myVSMain(v: MyVSInput) -> MyVSOutput\n{\n    var vsOut: MyVSOutput;\n    var pos =vec4<f32>(v.position, 1.0);\n\n    var mvMatrix=vsUniforms.viewMatrix * vsUniforms.modelMatrix;\n    vsOut.position = vsUniforms.projMatrix * mvMatrix * pos;\n\n    vsOut.normal = v.normal;\n    vsOut.texcoord = v.texcoord;\n    return vsOut;\n}\n\n@fragment\nfn myFSMain(v: MyVSOutput) -> @location(0) vec4<f32>\n{\n    return fsUniforms.color+vec4<f32>(.5,.5,.5,1.0);\n}\n\n");
 ;// CONCATENATED MODULE: ./src/core/cgp/cgp_texture.js
 
 
@@ -17941,6 +18331,14 @@ class cgp_texture_Texture extends CgTexture
         options = options || {};
 
         this.name = options.name || "unknown";
+
+        this.samplerDesc = {
+            "addressModeU": options.wrap || options.addressModeU || "clamp-to-edge",
+            "addressModeV": options.wrap || options.addressModeV || "clamp-to-edge",
+            "magFilter": options.magFilter || options.filter || "linear",
+            "minFilter": options.minFilter || options.filter || "linear",
+        };
+
 
         this._cgp.on("deviceChange", () =>
         {
@@ -18008,6 +18406,15 @@ class cgp_texture_Texture extends CgTexture
         return this.gpuTexture.createView();
     }
 
+    getSampler()
+    {
+        // "clamp-to-edge"
+        // "repeat"
+        // "mirror-repeat"
+
+        return this.samplerDesc;
+    }
+
     /**
      * @function initFromData
      * @memberof Texture
@@ -18036,6 +18443,17 @@ class cgp_texture_Texture extends CgTexture
             data,
             { "bytesPerRow": w * 4 },
             { "width": w, "height": h });
+    }
+
+
+    setWrap(v)
+    {
+        this.samplerDesc.addressModeU = this.samplerDesc.addressModeV = v;
+    }
+
+    setFilter(v)
+    {
+        this.samplerDesc.minFilter = this.samplerDesc.magFilter = v;
     }
 }
 
@@ -18170,7 +18588,7 @@ class WebGpuContext extends CGState
         {
             this._simpleShader = new cgp_shader_Shader(this, "simple default shader");
             this._simpleShader.setSource(cgl_shader_default);
-            this._simpleShader.addUniformFrag("4f", "color", 1, 1, 0, 1);
+            this._simpleShader.addUniformFrag("4f", "color", [1, 1, 0, 1]);
         }
 
         this.fpsCounter.startFrame();
@@ -18265,7 +18683,6 @@ class WebGpuContext extends CGState
         // for (let i = this._shaderStack.length - 1; i >= 0; i--) if (this._shaderStack[i]) if (this.frameStore.renderOffscreen == this._shaderStack[i].offScreenPass) return this._shaderStack[i];
     }
 
-
     setDevice(device)
     {
         this.device = device;
@@ -18277,8 +18694,6 @@ class WebGpuContext extends CGState
 
         this.emitEvent("deviceChange");
     }
-
-
 
     pushErrorScope(name, options = {})
     {
@@ -18391,10 +18806,8 @@ class WebGpuContext extends CGState
         this._stackDepthWrite.pop();
     }
 
-
     // --------------------------------------
     // state depthfunc
-
 
     /**
      * @function pushDepthFunc
@@ -18430,8 +18843,6 @@ class WebGpuContext extends CGState
         this._stackDepthFunc.pop();
     }
 
-
-
     // --------------------------------------
     // state CullFace
 
@@ -18460,20 +18871,18 @@ class WebGpuContext extends CGState
     }
 
     /**
- * pop face culling enabled state
- * @function popCullFace
- * @memberof Context
- * @instance
- */
+     * pop face culling enabled state
+     * @function popCullFace
+     * @memberof Context
+     * @instance
+     */
     popCullFace()
     {
         this._stackCullFace.pop();
     }
 
-
     // --------------------------------------
     // state CullFace Facing
-
 
     /**
      * push face culling face side
@@ -18515,7 +18924,6 @@ class WebGpuContext extends CGState
         this._stackBlend.push(b);
     }
 
-
     popBlend()
     {
         this._stackBlend.pop();
@@ -18537,7 +18945,7 @@ class WebGpuContext extends CGState
 
     getErrorTexture()
     {
-        if (this._errorTexture) return this._errorTexture;
+        // if (this._errorTexture) return this._errorTexture;
         const size = 256;
         this._errorTexture = new cgp_texture_Texture(this, {});
         this._errorTexture.initFromData(CgTexture.getDefaultTextureData("stripes", size, { "r": 1, "g": 0, "b": 0 }), size, size);
@@ -18649,8 +19057,14 @@ class Pipeline
             this.setShaderListener(this._old.shader, shader);
             needsRebuildReason = "shader changed";
         }
+
+        if (shader.needsPipelineUpdate)
+        {
+            needsRebuildReason = "mesh needs update: " + shader.needsPipelineUpdate;
+            shader.needsPipelineUpdate = false;
+        }
         if (mesh.needsPipelineUpdate)needsRebuildReason = "mesh needs update";
-        if (this.shaderNeedsPipelineUpdate)needsRebuildReason = "shader needs update: " + this.shaderNeedsPipelineUpdate;
+        if (this.shaderNeedsPipelineUpdate)needsRebuildReason = "shader was recompiled: " + this.shaderNeedsPipelineUpdate;
 
         if (this._pipeCfg)
         {
@@ -19975,7 +20389,7 @@ CABLES = __webpack_exports__["default"];
 ;
 
 
-var CABLES = CABLES || {}; CABLES.build = {"timestamp":1731661366759,"created":"2024-11-15T09:02:46.759Z","git":{"branch":"master","commit":"60f9e20b823994ef1a4163be50bb10cfe7e1e894","date":"1730989279","message":"fftarea v3"}};
+var CABLES = CABLES || {}; CABLES.build = {"timestamp":1734525262407,"created":"2024-12-18T12:34:22.407Z","git":{"branch":"master","commit":"20b730583e0a440aa00951d2b66a7e8f3d7db458","date":"1734433453","message":"docs"}};
 (()=>{"use strict";var t={d:(n,a)=>{for(var r in a)t.o(a,r)&&!t.o(n,r)&&Object.defineProperty(n,r,{enumerable:!0,get:a[r]})},o:(t,n)=>Object.prototype.hasOwnProperty.call(t,n),r:t=>{"undefined"!=typeof Symbol&&Symbol.toStringTag&&Object.defineProperty(t,Symbol.toStringTag,{value:"Module"}),Object.defineProperty(t,"__esModule",{value:!0})}},n={};t.r(n),t.d(n,{ARRAY_TYPE:()=>f,EPSILON:()=>M,RANDOM:()=>l,equals:()=>d,setMatrixArrayType:()=>v,toRadian:()=>m});var a={};t.r(a),t.d(a,{LDU:()=>j,add:()=>z,adjoint:()=>S,clone:()=>y,copy:()=>p,create:()=>x,determinant:()=>R,equals:()=>Y,exactEquals:()=>Q,frob:()=>V,fromRotation:()=>D,fromScaling:()=>F,fromValues:()=>w,identity:()=>q,invert:()=>P,mul:()=>_,multiply:()=>T,multiplyScalar:()=>X,multiplyScalarAndAdd:()=>Z,rotate:()=>I,scale:()=>E,set:()=>g,str:()=>L,sub:()=>B,subtract:()=>O,transpose:()=>A});var r={};t.r(r),t.d(r,{add:()=>it,clone:()=>k,copy:()=>U,create:()=>N,determinant:()=>J,equals:()=>ft,exactEquals:()=>Mt,frob:()=>ot,fromRotation:()=>at,fromScaling:()=>rt,fromTranslation:()=>ut,fromValues:()=>C,identity:()=>W,invert:()=>H,mul:()=>lt,multiply:()=>K,multiplyScalar:()=>ct,multiplyScalarAndAdd:()=>st,rotate:()=>$,scale:()=>tt,set:()=>G,str:()=>et,sub:()=>vt,subtract:()=>ht,translate:()=>nt});var u={};t.r(u),t.d(u,{add:()=>Yt,adjoint:()=>At,clone:()=>dt,copy:()=>xt,create:()=>bt,determinant:()=>Pt,equals:()=>Nt,exactEquals:()=>Bt,frob:()=>Qt,fromMat2d:()=>Lt,fromMat4:()=>mt,fromQuat:()=>Vt,fromRotation:()=>Dt,fromScaling:()=>Ft,fromTranslation:()=>Et,fromValues:()=>yt,identity:()=>qt,invert:()=>gt,mul:()=>kt,multiply:()=>St,multiplyScalar:()=>Zt,multiplyScalarAndAdd:()=>_t,normalFromMat4:()=>jt,projection:()=>zt,rotate:()=>Tt,scale:()=>It,set:()=>pt,str:()=>Ot,sub:()=>Ut,subtract:()=>Xt,translate:()=>Rt,transpose:()=>wt});var e={};t.r(e),t.d(e,{add:()=>Ln,adjoint:()=>nn,clone:()=>Ct,copy:()=>Gt,create:()=>Wt,determinant:()=>an,equals:()=>Qn,exactEquals:()=>On,frob:()=>Fn,fromQuat:()=>An,fromQuat2:()=>xn,fromRotation:()=>ln,fromRotationTranslation:()=>dn,fromRotationTranslationScale:()=>wn,fromRotationTranslationScaleOrigin:()=>gn,fromScaling:()=>fn,fromTranslation:()=>Mn,fromValues:()=>Ht,fromXRotation:()=>vn,fromYRotation:()=>bn,fromZRotation:()=>mn,frustum:()=>Pn,getRotation:()=>qn,getScaling:()=>pn,getTranslation:()=>yn,identity:()=>Kt,invert:()=>tn,lookAt:()=>In,mul:()=>Yn,multiply:()=>rn,multiplyScalar:()=>jn,multiplyScalarAndAdd:()=>zn,ortho:()=>Tn,perspective:()=>Sn,perspectiveFromFieldOfView:()=>Rn,rotate:()=>on,rotateX:()=>hn,rotateY:()=>cn,rotateZ:()=>sn,scale:()=>en,set:()=>Jt,str:()=>Dn,sub:()=>Xn,subtract:()=>Vn,targetTo:()=>En,translate:()=>un,transpose:()=>$t});var o={};t.r(o),t.d(o,{add:()=>Wn,angle:()=>wa,bezier:()=>va,ceil:()=>Jn,clone:()=>_n,copy:()=>kn,create:()=>Zn,cross:()=>Ma,dist:()=>Da,distance:()=>ua,div:()=>Ea,divide:()=>Hn,dot:()=>sa,equals:()=>Sa,exactEquals:()=>Pa,floor:()=>Kn,forEach:()=>ja,fromValues:()=>Nn,hermite:()=>la,inverse:()=>ha,len:()=>La,length:()=>Bn,lerp:()=>fa,max:()=>ta,min:()=>$n,mul:()=>Ia,multiply:()=>Gn,negate:()=>ia,normalize:()=>ca,random:()=>ba,rotateX:()=>ya,rotateY:()=>pa,rotateZ:()=>qa,round:()=>na,scale:()=>aa,scaleAndAdd:()=>ra,set:()=>Un,sqrDist:()=>Fa,sqrLen:()=>Va,squaredDistance:()=>ea,squaredLength:()=>oa,str:()=>Aa,sub:()=>Ta,subtract:()=>Cn,transformMat3:()=>da,transformMat4:()=>ma,transformQuat:()=>xa,zero:()=>ga});var i={};t.r(i),t.d(i,{add:()=>Za,ceil:()=>ka,clone:()=>Oa,copy:()=>Ya,create:()=>za,cross:()=>or,dist:()=>xr,distance:()=>Ka,div:()=>dr,divide:()=>Na,dot:()=>er,equals:()=>vr,exactEquals:()=>lr,floor:()=>Ua,forEach:()=>wr,fromValues:()=>Qa,inverse:()=>rr,len:()=>pr,length:()=>tr,lerp:()=>ir,max:()=>Ca,min:()=>Wa,mul:()=>mr,multiply:()=>Ba,negate:()=>ar,normalize:()=>ur,random:()=>hr,round:()=>Ga,scale:()=>Ha,scaleAndAdd:()=>Ja,set:()=>Xa,sqrDist:()=>yr,sqrLen:()=>qr,squaredDistance:()=>$a,squaredLength:()=>nr,str:()=>fr,sub:()=>br,subtract:()=>_a,transformMat4:()=>cr,transformQuat:()=>sr,zero:()=>Mr});var h={};t.r(h),t.d(h,{add:()=>$r,calculateW:()=>Fr,clone:()=>Gr,conjugate:()=>Yr,copy:()=>Jr,create:()=>gr,dot:()=>au,equals:()=>su,exactEquals:()=>cu,exp:()=>Lr,fromEuler:()=>Zr,fromMat3:()=>Xr,fromValues:()=>Hr,getAngle:()=>Rr,getAxisAngle:()=>Sr,identity:()=>Ar,invert:()=>Qr,len:()=>eu,length:()=>uu,lerp:()=>ru,ln:()=>Vr,mul:()=>tu,multiply:()=>Tr,normalize:()=>hu,pow:()=>jr,random:()=>Or,rotateX:()=>Ir,rotateY:()=>Er,rotateZ:()=>Dr,rotationTo:()=>Mu,scale:()=>nu,set:()=>Kr,setAxes:()=>lu,setAxisAngle:()=>Pr,slerp:()=>zr,sqlerp:()=>fu,sqrLen:()=>iu,squaredLength:()=>ou,str:()=>_r});var c={};t.r(c),t.d(c,{add:()=>Ou,clone:()=>bu,conjugate:()=>Nu,copy:()=>wu,create:()=>vu,dot:()=>Zu,equals:()=>Ku,exactEquals:()=>Ju,fromMat4:()=>qu,fromRotation:()=>pu,fromRotationTranslation:()=>xu,fromRotationTranslationValues:()=>du,fromTranslation:()=>yu,fromValues:()=>mu,getDual:()=>Su,getReal:()=>Pu,getTranslation:()=>Iu,identity:()=>gu,invert:()=>Bu,len:()=>Uu,length:()=>ku,lerp:()=>_u,mul:()=>Yu,multiply:()=>Qu,normalize:()=>Gu,rotateAroundAxis:()=>zu,rotateByQuatAppend:()=>Vu,rotateByQuatPrepend:()=>ju,rotateX:()=>Du,rotateY:()=>Fu,rotateZ:()=>Lu,scale:()=>Xu,set:()=>Au,setDual:()=>Tu,setReal:()=>Ru,sqrLen:()=>Cu,squaredLength:()=>Wu,str:()=>Hu,translate:()=>Eu});var s={};t.r(s),t.d(s,{add:()=>ue,angle:()=>De,ceil:()=>he,clone:()=>te,copy:()=>ae,create:()=>$u,cross:()=>ge,dist:()=>Xe,distance:()=>be,div:()=>Ye,divide:()=>ie,dot:()=>we,equals:()=>je,exactEquals:()=>Ve,floor:()=>ce,forEach:()=>Be,fromValues:()=>ne,inverse:()=>pe,len:()=>ze,length:()=>de,lerp:()=>Ae,max:()=>Me,min:()=>se,mul:()=>Qe,multiply:()=>oe,negate:()=>ye,normalize:()=>qe,random:()=>Pe,rotate:()=>Ee,round:()=>fe,scale:()=>le,scaleAndAdd:()=>ve,set:()=>re,sqrDist:()=>Ze,sqrLen:()=>_e,squaredDistance:()=>me,squaredLength:()=>xe,str:()=>Le,sub:()=>Oe,subtract:()=>ee,transformMat2:()=>Se,transformMat2d:()=>Re,transformMat3:()=>Te,transformMat4:()=>Ie,zero:()=>Fe});var M=1e-6,f="undefined"!=typeof Float32Array?Float32Array:Array,l=Math.random;function v(t){f=t}var b=Math.PI/180;function m(t){return t*b}function d(t,n){return Math.abs(t-n)<=M*Math.max(1,Math.abs(t),Math.abs(n))}function x(){var t=new f(4);return f!=Float32Array&&(t[1]=0,t[2]=0),t[0]=1,t[3]=1,t}function y(t){var n=new f(4);return n[0]=t[0],n[1]=t[1],n[2]=t[2],n[3]=t[3],n}function p(t,n){return t[0]=n[0],t[1]=n[1],t[2]=n[2],t[3]=n[3],t}function q(t){return t[0]=1,t[1]=0,t[2]=0,t[3]=1,t}function w(t,n,a,r){var u=new f(4);return u[0]=t,u[1]=n,u[2]=a,u[3]=r,u}function g(t,n,a,r,u){return t[0]=n,t[1]=a,t[2]=r,t[3]=u,t}function A(t,n){if(t===n){var a=n[1];t[1]=n[2],t[2]=a}else t[0]=n[0],t[1]=n[2],t[2]=n[1],t[3]=n[3];return t}function P(t,n){var a=n[0],r=n[1],u=n[2],e=n[3],o=a*e-u*r;return o?(o=1/o,t[0]=e*o,t[1]=-r*o,t[2]=-u*o,t[3]=a*o,t):null}function S(t,n){var a=n[0];return t[0]=n[3],t[1]=-n[1],t[2]=-n[2],t[3]=a,t}function R(t){return t[0]*t[3]-t[2]*t[1]}function T(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=a[0],h=a[1],c=a[2],s=a[3];return t[0]=r*i+e*h,t[1]=u*i+o*h,t[2]=r*c+e*s,t[3]=u*c+o*s,t}function I(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=Math.sin(a),h=Math.cos(a);return t[0]=r*h+e*i,t[1]=u*h+o*i,t[2]=r*-i+e*h,t[3]=u*-i+o*h,t}function E(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=a[0],h=a[1];return t[0]=r*i,t[1]=u*i,t[2]=e*h,t[3]=o*h,t}function D(t,n){var a=Math.sin(n),r=Math.cos(n);return t[0]=r,t[1]=a,t[2]=-a,t[3]=r,t}function F(t,n){return t[0]=n[0],t[1]=0,t[2]=0,t[3]=n[1],t}function L(t){return"mat2("+t[0]+", "+t[1]+", "+t[2]+", "+t[3]+")"}function V(t){return Math.hypot(t[0],t[1],t[2],t[3])}function j(t,n,a,r){return t[2]=r[2]/r[0],a[0]=r[0],a[1]=r[1],a[3]=r[3]-t[2]*a[1],[t,n,a]}function z(t,n,a){return t[0]=n[0]+a[0],t[1]=n[1]+a[1],t[2]=n[2]+a[2],t[3]=n[3]+a[3],t}function O(t,n,a){return t[0]=n[0]-a[0],t[1]=n[1]-a[1],t[2]=n[2]-a[2],t[3]=n[3]-a[3],t}function Q(t,n){return t[0]===n[0]&&t[1]===n[1]&&t[2]===n[2]&&t[3]===n[3]}function Y(t,n){var a=t[0],r=t[1],u=t[2],e=t[3],o=n[0],i=n[1],h=n[2],c=n[3];return Math.abs(a-o)<=M*Math.max(1,Math.abs(a),Math.abs(o))&&Math.abs(r-i)<=M*Math.max(1,Math.abs(r),Math.abs(i))&&Math.abs(u-h)<=M*Math.max(1,Math.abs(u),Math.abs(h))&&Math.abs(e-c)<=M*Math.max(1,Math.abs(e),Math.abs(c))}function X(t,n,a){return t[0]=n[0]*a,t[1]=n[1]*a,t[2]=n[2]*a,t[3]=n[3]*a,t}function Z(t,n,a,r){return t[0]=n[0]+a[0]*r,t[1]=n[1]+a[1]*r,t[2]=n[2]+a[2]*r,t[3]=n[3]+a[3]*r,t}Math.hypot||(Math.hypot=function(){for(var t=0,n=arguments.length;n--;)t+=arguments[n]*arguments[n];return Math.sqrt(t)});var _=T,B=O;function N(){var t=new f(6);return f!=Float32Array&&(t[1]=0,t[2]=0,t[4]=0,t[5]=0),t[0]=1,t[3]=1,t}function k(t){var n=new f(6);return n[0]=t[0],n[1]=t[1],n[2]=t[2],n[3]=t[3],n[4]=t[4],n[5]=t[5],n}function U(t,n){return t[0]=n[0],t[1]=n[1],t[2]=n[2],t[3]=n[3],t[4]=n[4],t[5]=n[5],t}function W(t){return t[0]=1,t[1]=0,t[2]=0,t[3]=1,t[4]=0,t[5]=0,t}function C(t,n,a,r,u,e){var o=new f(6);return o[0]=t,o[1]=n,o[2]=a,o[3]=r,o[4]=u,o[5]=e,o}function G(t,n,a,r,u,e,o){return t[0]=n,t[1]=a,t[2]=r,t[3]=u,t[4]=e,t[5]=o,t}function H(t,n){var a=n[0],r=n[1],u=n[2],e=n[3],o=n[4],i=n[5],h=a*e-r*u;return h?(h=1/h,t[0]=e*h,t[1]=-r*h,t[2]=-u*h,t[3]=a*h,t[4]=(u*i-e*o)*h,t[5]=(r*o-a*i)*h,t):null}function J(t){return t[0]*t[3]-t[1]*t[2]}function K(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=n[4],h=n[5],c=a[0],s=a[1],M=a[2],f=a[3],l=a[4],v=a[5];return t[0]=r*c+e*s,t[1]=u*c+o*s,t[2]=r*M+e*f,t[3]=u*M+o*f,t[4]=r*l+e*v+i,t[5]=u*l+o*v+h,t}function $(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=n[4],h=n[5],c=Math.sin(a),s=Math.cos(a);return t[0]=r*s+e*c,t[1]=u*s+o*c,t[2]=r*-c+e*s,t[3]=u*-c+o*s,t[4]=i,t[5]=h,t}function tt(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=n[4],h=n[5],c=a[0],s=a[1];return t[0]=r*c,t[1]=u*c,t[2]=e*s,t[3]=o*s,t[4]=i,t[5]=h,t}function nt(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=n[4],h=n[5],c=a[0],s=a[1];return t[0]=r,t[1]=u,t[2]=e,t[3]=o,t[4]=r*c+e*s+i,t[5]=u*c+o*s+h,t}function at(t,n){var a=Math.sin(n),r=Math.cos(n);return t[0]=r,t[1]=a,t[2]=-a,t[3]=r,t[4]=0,t[5]=0,t}function rt(t,n){return t[0]=n[0],t[1]=0,t[2]=0,t[3]=n[1],t[4]=0,t[5]=0,t}function ut(t,n){return t[0]=1,t[1]=0,t[2]=0,t[3]=1,t[4]=n[0],t[5]=n[1],t}function et(t){return"mat2d("+t[0]+", "+t[1]+", "+t[2]+", "+t[3]+", "+t[4]+", "+t[5]+")"}function ot(t){return Math.hypot(t[0],t[1],t[2],t[3],t[4],t[5],1)}function it(t,n,a){return t[0]=n[0]+a[0],t[1]=n[1]+a[1],t[2]=n[2]+a[2],t[3]=n[3]+a[3],t[4]=n[4]+a[4],t[5]=n[5]+a[5],t}function ht(t,n,a){return t[0]=n[0]-a[0],t[1]=n[1]-a[1],t[2]=n[2]-a[2],t[3]=n[3]-a[3],t[4]=n[4]-a[4],t[5]=n[5]-a[5],t}function ct(t,n,a){return t[0]=n[0]*a,t[1]=n[1]*a,t[2]=n[2]*a,t[3]=n[3]*a,t[4]=n[4]*a,t[5]=n[5]*a,t}function st(t,n,a,r){return t[0]=n[0]+a[0]*r,t[1]=n[1]+a[1]*r,t[2]=n[2]+a[2]*r,t[3]=n[3]+a[3]*r,t[4]=n[4]+a[4]*r,t[5]=n[5]+a[5]*r,t}function Mt(t,n){return t[0]===n[0]&&t[1]===n[1]&&t[2]===n[2]&&t[3]===n[3]&&t[4]===n[4]&&t[5]===n[5]}function ft(t,n){var a=t[0],r=t[1],u=t[2],e=t[3],o=t[4],i=t[5],h=n[0],c=n[1],s=n[2],f=n[3],l=n[4],v=n[5];return Math.abs(a-h)<=M*Math.max(1,Math.abs(a),Math.abs(h))&&Math.abs(r-c)<=M*Math.max(1,Math.abs(r),Math.abs(c))&&Math.abs(u-s)<=M*Math.max(1,Math.abs(u),Math.abs(s))&&Math.abs(e-f)<=M*Math.max(1,Math.abs(e),Math.abs(f))&&Math.abs(o-l)<=M*Math.max(1,Math.abs(o),Math.abs(l))&&Math.abs(i-v)<=M*Math.max(1,Math.abs(i),Math.abs(v))}var lt=K,vt=ht;function bt(){var t=new f(9);return f!=Float32Array&&(t[1]=0,t[2]=0,t[3]=0,t[5]=0,t[6]=0,t[7]=0),t[0]=1,t[4]=1,t[8]=1,t}function mt(t,n){return t[0]=n[0],t[1]=n[1],t[2]=n[2],t[3]=n[4],t[4]=n[5],t[5]=n[6],t[6]=n[8],t[7]=n[9],t[8]=n[10],t}function dt(t){var n=new f(9);return n[0]=t[0],n[1]=t[1],n[2]=t[2],n[3]=t[3],n[4]=t[4],n[5]=t[5],n[6]=t[6],n[7]=t[7],n[8]=t[8],n}function xt(t,n){return t[0]=n[0],t[1]=n[1],t[2]=n[2],t[3]=n[3],t[4]=n[4],t[5]=n[5],t[6]=n[6],t[7]=n[7],t[8]=n[8],t}function yt(t,n,a,r,u,e,o,i,h){var c=new f(9);return c[0]=t,c[1]=n,c[2]=a,c[3]=r,c[4]=u,c[5]=e,c[6]=o,c[7]=i,c[8]=h,c}function pt(t,n,a,r,u,e,o,i,h,c){return t[0]=n,t[1]=a,t[2]=r,t[3]=u,t[4]=e,t[5]=o,t[6]=i,t[7]=h,t[8]=c,t}function qt(t){return t[0]=1,t[1]=0,t[2]=0,t[3]=0,t[4]=1,t[5]=0,t[6]=0,t[7]=0,t[8]=1,t}function wt(t,n){if(t===n){var a=n[1],r=n[2],u=n[5];t[1]=n[3],t[2]=n[6],t[3]=a,t[5]=n[7],t[6]=r,t[7]=u}else t[0]=n[0],t[1]=n[3],t[2]=n[6],t[3]=n[1],t[4]=n[4],t[5]=n[7],t[6]=n[2],t[7]=n[5],t[8]=n[8];return t}function gt(t,n){var a=n[0],r=n[1],u=n[2],e=n[3],o=n[4],i=n[5],h=n[6],c=n[7],s=n[8],M=s*o-i*c,f=-s*e+i*h,l=c*e-o*h,v=a*M+r*f+u*l;return v?(v=1/v,t[0]=M*v,t[1]=(-s*r+u*c)*v,t[2]=(i*r-u*o)*v,t[3]=f*v,t[4]=(s*a-u*h)*v,t[5]=(-i*a+u*e)*v,t[6]=l*v,t[7]=(-c*a+r*h)*v,t[8]=(o*a-r*e)*v,t):null}function At(t,n){var a=n[0],r=n[1],u=n[2],e=n[3],o=n[4],i=n[5],h=n[6],c=n[7],s=n[8];return t[0]=o*s-i*c,t[1]=u*c-r*s,t[2]=r*i-u*o,t[3]=i*h-e*s,t[4]=a*s-u*h,t[5]=u*e-a*i,t[6]=e*c-o*h,t[7]=r*h-a*c,t[8]=a*o-r*e,t}function Pt(t){var n=t[0],a=t[1],r=t[2],u=t[3],e=t[4],o=t[5],i=t[6],h=t[7],c=t[8];return n*(c*e-o*h)+a*(-c*u+o*i)+r*(h*u-e*i)}function St(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=n[4],h=n[5],c=n[6],s=n[7],M=n[8],f=a[0],l=a[1],v=a[2],b=a[3],m=a[4],d=a[5],x=a[6],y=a[7],p=a[8];return t[0]=f*r+l*o+v*c,t[1]=f*u+l*i+v*s,t[2]=f*e+l*h+v*M,t[3]=b*r+m*o+d*c,t[4]=b*u+m*i+d*s,t[5]=b*e+m*h+d*M,t[6]=x*r+y*o+p*c,t[7]=x*u+y*i+p*s,t[8]=x*e+y*h+p*M,t}function Rt(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=n[4],h=n[5],c=n[6],s=n[7],M=n[8],f=a[0],l=a[1];return t[0]=r,t[1]=u,t[2]=e,t[3]=o,t[4]=i,t[5]=h,t[6]=f*r+l*o+c,t[7]=f*u+l*i+s,t[8]=f*e+l*h+M,t}function Tt(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=n[4],h=n[5],c=n[6],s=n[7],M=n[8],f=Math.sin(a),l=Math.cos(a);return t[0]=l*r+f*o,t[1]=l*u+f*i,t[2]=l*e+f*h,t[3]=l*o-f*r,t[4]=l*i-f*u,t[5]=l*h-f*e,t[6]=c,t[7]=s,t[8]=M,t}function It(t,n,a){var r=a[0],u=a[1];return t[0]=r*n[0],t[1]=r*n[1],t[2]=r*n[2],t[3]=u*n[3],t[4]=u*n[4],t[5]=u*n[5],t[6]=n[6],t[7]=n[7],t[8]=n[8],t}function Et(t,n){return t[0]=1,t[1]=0,t[2]=0,t[3]=0,t[4]=1,t[5]=0,t[6]=n[0],t[7]=n[1],t[8]=1,t}function Dt(t,n){var a=Math.sin(n),r=Math.cos(n);return t[0]=r,t[1]=a,t[2]=0,t[3]=-a,t[4]=r,t[5]=0,t[6]=0,t[7]=0,t[8]=1,t}function Ft(t,n){return t[0]=n[0],t[1]=0,t[2]=0,t[3]=0,t[4]=n[1],t[5]=0,t[6]=0,t[7]=0,t[8]=1,t}function Lt(t,n){return t[0]=n[0],t[1]=n[1],t[2]=0,t[3]=n[2],t[4]=n[3],t[5]=0,t[6]=n[4],t[7]=n[5],t[8]=1,t}function Vt(t,n){var a=n[0],r=n[1],u=n[2],e=n[3],o=a+a,i=r+r,h=u+u,c=a*o,s=r*o,M=r*i,f=u*o,l=u*i,v=u*h,b=e*o,m=e*i,d=e*h;return t[0]=1-M-v,t[3]=s-d,t[6]=f+m,t[1]=s+d,t[4]=1-c-v,t[7]=l-b,t[2]=f-m,t[5]=l+b,t[8]=1-c-M,t}function jt(t,n){var a=n[0],r=n[1],u=n[2],e=n[3],o=n[4],i=n[5],h=n[6],c=n[7],s=n[8],M=n[9],f=n[10],l=n[11],v=n[12],b=n[13],m=n[14],d=n[15],x=a*i-r*o,y=a*h-u*o,p=a*c-e*o,q=r*h-u*i,w=r*c-e*i,g=u*c-e*h,A=s*b-M*v,P=s*m-f*v,S=s*d-l*v,R=M*m-f*b,T=M*d-l*b,I=f*d-l*m,E=x*I-y*T+p*R+q*S-w*P+g*A;return E?(E=1/E,t[0]=(i*I-h*T+c*R)*E,t[1]=(h*S-o*I-c*P)*E,t[2]=(o*T-i*S+c*A)*E,t[3]=(u*T-r*I-e*R)*E,t[4]=(a*I-u*S+e*P)*E,t[5]=(r*S-a*T-e*A)*E,t[6]=(b*g-m*w+d*q)*E,t[7]=(m*p-v*g-d*y)*E,t[8]=(v*w-b*p+d*x)*E,t):null}function zt(t,n,a){return t[0]=2/n,t[1]=0,t[2]=0,t[3]=0,t[4]=-2/a,t[5]=0,t[6]=-1,t[7]=1,t[8]=1,t}function Ot(t){return"mat3("+t[0]+", "+t[1]+", "+t[2]+", "+t[3]+", "+t[4]+", "+t[5]+", "+t[6]+", "+t[7]+", "+t[8]+")"}function Qt(t){return Math.hypot(t[0],t[1],t[2],t[3],t[4],t[5],t[6],t[7],t[8])}function Yt(t,n,a){return t[0]=n[0]+a[0],t[1]=n[1]+a[1],t[2]=n[2]+a[2],t[3]=n[3]+a[3],t[4]=n[4]+a[4],t[5]=n[5]+a[5],t[6]=n[6]+a[6],t[7]=n[7]+a[7],t[8]=n[8]+a[8],t}function Xt(t,n,a){return t[0]=n[0]-a[0],t[1]=n[1]-a[1],t[2]=n[2]-a[2],t[3]=n[3]-a[3],t[4]=n[4]-a[4],t[5]=n[5]-a[5],t[6]=n[6]-a[6],t[7]=n[7]-a[7],t[8]=n[8]-a[8],t}function Zt(t,n,a){return t[0]=n[0]*a,t[1]=n[1]*a,t[2]=n[2]*a,t[3]=n[3]*a,t[4]=n[4]*a,t[5]=n[5]*a,t[6]=n[6]*a,t[7]=n[7]*a,t[8]=n[8]*a,t}function _t(t,n,a,r){return t[0]=n[0]+a[0]*r,t[1]=n[1]+a[1]*r,t[2]=n[2]+a[2]*r,t[3]=n[3]+a[3]*r,t[4]=n[4]+a[4]*r,t[5]=n[5]+a[5]*r,t[6]=n[6]+a[6]*r,t[7]=n[7]+a[7]*r,t[8]=n[8]+a[8]*r,t}function Bt(t,n){return t[0]===n[0]&&t[1]===n[1]&&t[2]===n[2]&&t[3]===n[3]&&t[4]===n[4]&&t[5]===n[5]&&t[6]===n[6]&&t[7]===n[7]&&t[8]===n[8]}function Nt(t,n){var a=t[0],r=t[1],u=t[2],e=t[3],o=t[4],i=t[5],h=t[6],c=t[7],s=t[8],f=n[0],l=n[1],v=n[2],b=n[3],m=n[4],d=n[5],x=n[6],y=n[7],p=n[8];return Math.abs(a-f)<=M*Math.max(1,Math.abs(a),Math.abs(f))&&Math.abs(r-l)<=M*Math.max(1,Math.abs(r),Math.abs(l))&&Math.abs(u-v)<=M*Math.max(1,Math.abs(u),Math.abs(v))&&Math.abs(e-b)<=M*Math.max(1,Math.abs(e),Math.abs(b))&&Math.abs(o-m)<=M*Math.max(1,Math.abs(o),Math.abs(m))&&Math.abs(i-d)<=M*Math.max(1,Math.abs(i),Math.abs(d))&&Math.abs(h-x)<=M*Math.max(1,Math.abs(h),Math.abs(x))&&Math.abs(c-y)<=M*Math.max(1,Math.abs(c),Math.abs(y))&&Math.abs(s-p)<=M*Math.max(1,Math.abs(s),Math.abs(p))}var kt=St,Ut=Xt;function Wt(){var t=new f(16);return f!=Float32Array&&(t[1]=0,t[2]=0,t[3]=0,t[4]=0,t[6]=0,t[7]=0,t[8]=0,t[9]=0,t[11]=0,t[12]=0,t[13]=0,t[14]=0),t[0]=1,t[5]=1,t[10]=1,t[15]=1,t}function Ct(t){var n=new f(16);return n[0]=t[0],n[1]=t[1],n[2]=t[2],n[3]=t[3],n[4]=t[4],n[5]=t[5],n[6]=t[6],n[7]=t[7],n[8]=t[8],n[9]=t[9],n[10]=t[10],n[11]=t[11],n[12]=t[12],n[13]=t[13],n[14]=t[14],n[15]=t[15],n}function Gt(t,n){return t[0]=n[0],t[1]=n[1],t[2]=n[2],t[3]=n[3],t[4]=n[4],t[5]=n[5],t[6]=n[6],t[7]=n[7],t[8]=n[8],t[9]=n[9],t[10]=n[10],t[11]=n[11],t[12]=n[12],t[13]=n[13],t[14]=n[14],t[15]=n[15],t}function Ht(t,n,a,r,u,e,o,i,h,c,s,M,l,v,b,m){var d=new f(16);return d[0]=t,d[1]=n,d[2]=a,d[3]=r,d[4]=u,d[5]=e,d[6]=o,d[7]=i,d[8]=h,d[9]=c,d[10]=s,d[11]=M,d[12]=l,d[13]=v,d[14]=b,d[15]=m,d}function Jt(t,n,a,r,u,e,o,i,h,c,s,M,f,l,v,b,m){return t[0]=n,t[1]=a,t[2]=r,t[3]=u,t[4]=e,t[5]=o,t[6]=i,t[7]=h,t[8]=c,t[9]=s,t[10]=M,t[11]=f,t[12]=l,t[13]=v,t[14]=b,t[15]=m,t}function Kt(t){return t[0]=1,t[1]=0,t[2]=0,t[3]=0,t[4]=0,t[5]=1,t[6]=0,t[7]=0,t[8]=0,t[9]=0,t[10]=1,t[11]=0,t[12]=0,t[13]=0,t[14]=0,t[15]=1,t}function $t(t,n){if(t===n){var a=n[1],r=n[2],u=n[3],e=n[6],o=n[7],i=n[11];t[1]=n[4],t[2]=n[8],t[3]=n[12],t[4]=a,t[6]=n[9],t[7]=n[13],t[8]=r,t[9]=e,t[11]=n[14],t[12]=u,t[13]=o,t[14]=i}else t[0]=n[0],t[1]=n[4],t[2]=n[8],t[3]=n[12],t[4]=n[1],t[5]=n[5],t[6]=n[9],t[7]=n[13],t[8]=n[2],t[9]=n[6],t[10]=n[10],t[11]=n[14],t[12]=n[3],t[13]=n[7],t[14]=n[11],t[15]=n[15];return t}function tn(t,n){var a=n[0],r=n[1],u=n[2],e=n[3],o=n[4],i=n[5],h=n[6],c=n[7],s=n[8],M=n[9],f=n[10],l=n[11],v=n[12],b=n[13],m=n[14],d=n[15],x=a*i-r*o,y=a*h-u*o,p=a*c-e*o,q=r*h-u*i,w=r*c-e*i,g=u*c-e*h,A=s*b-M*v,P=s*m-f*v,S=s*d-l*v,R=M*m-f*b,T=M*d-l*b,I=f*d-l*m,E=x*I-y*T+p*R+q*S-w*P+g*A;return E?(E=1/E,t[0]=(i*I-h*T+c*R)*E,t[1]=(u*T-r*I-e*R)*E,t[2]=(b*g-m*w+d*q)*E,t[3]=(f*w-M*g-l*q)*E,t[4]=(h*S-o*I-c*P)*E,t[5]=(a*I-u*S+e*P)*E,t[6]=(m*p-v*g-d*y)*E,t[7]=(s*g-f*p+l*y)*E,t[8]=(o*T-i*S+c*A)*E,t[9]=(r*S-a*T-e*A)*E,t[10]=(v*w-b*p+d*x)*E,t[11]=(M*p-s*w-l*x)*E,t[12]=(i*P-o*R-h*A)*E,t[13]=(a*R-r*P+u*A)*E,t[14]=(b*y-v*q-m*x)*E,t[15]=(s*q-M*y+f*x)*E,t):null}function nn(t,n){var a=n[0],r=n[1],u=n[2],e=n[3],o=n[4],i=n[5],h=n[6],c=n[7],s=n[8],M=n[9],f=n[10],l=n[11],v=n[12],b=n[13],m=n[14],d=n[15];return t[0]=i*(f*d-l*m)-M*(h*d-c*m)+b*(h*l-c*f),t[1]=-(r*(f*d-l*m)-M*(u*d-e*m)+b*(u*l-e*f)),t[2]=r*(h*d-c*m)-i*(u*d-e*m)+b*(u*c-e*h),t[3]=-(r*(h*l-c*f)-i*(u*l-e*f)+M*(u*c-e*h)),t[4]=-(o*(f*d-l*m)-s*(h*d-c*m)+v*(h*l-c*f)),t[5]=a*(f*d-l*m)-s*(u*d-e*m)+v*(u*l-e*f),t[6]=-(a*(h*d-c*m)-o*(u*d-e*m)+v*(u*c-e*h)),t[7]=a*(h*l-c*f)-o*(u*l-e*f)+s*(u*c-e*h),t[8]=o*(M*d-l*b)-s*(i*d-c*b)+v*(i*l-c*M),t[9]=-(a*(M*d-l*b)-s*(r*d-e*b)+v*(r*l-e*M)),t[10]=a*(i*d-c*b)-o*(r*d-e*b)+v*(r*c-e*i),t[11]=-(a*(i*l-c*M)-o*(r*l-e*M)+s*(r*c-e*i)),t[12]=-(o*(M*m-f*b)-s*(i*m-h*b)+v*(i*f-h*M)),t[13]=a*(M*m-f*b)-s*(r*m-u*b)+v*(r*f-u*M),t[14]=-(a*(i*m-h*b)-o*(r*m-u*b)+v*(r*h-u*i)),t[15]=a*(i*f-h*M)-o*(r*f-u*M)+s*(r*h-u*i),t}function an(t){var n=t[0],a=t[1],r=t[2],u=t[3],e=t[4],o=t[5],i=t[6],h=t[7],c=t[8],s=t[9],M=t[10],f=t[11],l=t[12],v=t[13],b=t[14],m=t[15];return(n*o-a*e)*(M*m-f*b)-(n*i-r*e)*(s*m-f*v)+(n*h-u*e)*(s*b-M*v)+(a*i-r*o)*(c*m-f*l)-(a*h-u*o)*(c*b-M*l)+(r*h-u*i)*(c*v-s*l)}function rn(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=n[4],h=n[5],c=n[6],s=n[7],M=n[8],f=n[9],l=n[10],v=n[11],b=n[12],m=n[13],d=n[14],x=n[15],y=a[0],p=a[1],q=a[2],w=a[3];return t[0]=y*r+p*i+q*M+w*b,t[1]=y*u+p*h+q*f+w*m,t[2]=y*e+p*c+q*l+w*d,t[3]=y*o+p*s+q*v+w*x,y=a[4],p=a[5],q=a[6],w=a[7],t[4]=y*r+p*i+q*M+w*b,t[5]=y*u+p*h+q*f+w*m,t[6]=y*e+p*c+q*l+w*d,t[7]=y*o+p*s+q*v+w*x,y=a[8],p=a[9],q=a[10],w=a[11],t[8]=y*r+p*i+q*M+w*b,t[9]=y*u+p*h+q*f+w*m,t[10]=y*e+p*c+q*l+w*d,t[11]=y*o+p*s+q*v+w*x,y=a[12],p=a[13],q=a[14],w=a[15],t[12]=y*r+p*i+q*M+w*b,t[13]=y*u+p*h+q*f+w*m,t[14]=y*e+p*c+q*l+w*d,t[15]=y*o+p*s+q*v+w*x,t}function un(t,n,a){var r,u,e,o,i,h,c,s,M,f,l,v,b=a[0],m=a[1],d=a[2];return n===t?(t[12]=n[0]*b+n[4]*m+n[8]*d+n[12],t[13]=n[1]*b+n[5]*m+n[9]*d+n[13],t[14]=n[2]*b+n[6]*m+n[10]*d+n[14],t[15]=n[3]*b+n[7]*m+n[11]*d+n[15]):(r=n[0],u=n[1],e=n[2],o=n[3],i=n[4],h=n[5],c=n[6],s=n[7],M=n[8],f=n[9],l=n[10],v=n[11],t[0]=r,t[1]=u,t[2]=e,t[3]=o,t[4]=i,t[5]=h,t[6]=c,t[7]=s,t[8]=M,t[9]=f,t[10]=l,t[11]=v,t[12]=r*b+i*m+M*d+n[12],t[13]=u*b+h*m+f*d+n[13],t[14]=e*b+c*m+l*d+n[14],t[15]=o*b+s*m+v*d+n[15]),t}function en(t,n,a){var r=a[0],u=a[1],e=a[2];return t[0]=n[0]*r,t[1]=n[1]*r,t[2]=n[2]*r,t[3]=n[3]*r,t[4]=n[4]*u,t[5]=n[5]*u,t[6]=n[6]*u,t[7]=n[7]*u,t[8]=n[8]*e,t[9]=n[9]*e,t[10]=n[10]*e,t[11]=n[11]*e,t[12]=n[12],t[13]=n[13],t[14]=n[14],t[15]=n[15],t}function on(t,n,a,r){var u,e,o,i,h,c,s,f,l,v,b,m,d,x,y,p,q,w,g,A,P,S,R,T,I=r[0],E=r[1],D=r[2],F=Math.hypot(I,E,D);return F<M?null:(I*=F=1/F,E*=F,D*=F,u=Math.sin(a),o=1-(e=Math.cos(a)),i=n[0],h=n[1],c=n[2],s=n[3],f=n[4],l=n[5],v=n[6],b=n[7],m=n[8],d=n[9],x=n[10],y=n[11],p=I*I*o+e,q=E*I*o+D*u,w=D*I*o-E*u,g=I*E*o-D*u,A=E*E*o+e,P=D*E*o+I*u,S=I*D*o+E*u,R=E*D*o-I*u,T=D*D*o+e,t[0]=i*p+f*q+m*w,t[1]=h*p+l*q+d*w,t[2]=c*p+v*q+x*w,t[3]=s*p+b*q+y*w,t[4]=i*g+f*A+m*P,t[5]=h*g+l*A+d*P,t[6]=c*g+v*A+x*P,t[7]=s*g+b*A+y*P,t[8]=i*S+f*R+m*T,t[9]=h*S+l*R+d*T,t[10]=c*S+v*R+x*T,t[11]=s*S+b*R+y*T,n!==t&&(t[12]=n[12],t[13]=n[13],t[14]=n[14],t[15]=n[15]),t)}function hn(t,n,a){var r=Math.sin(a),u=Math.cos(a),e=n[4],o=n[5],i=n[6],h=n[7],c=n[8],s=n[9],M=n[10],f=n[11];return n!==t&&(t[0]=n[0],t[1]=n[1],t[2]=n[2],t[3]=n[3],t[12]=n[12],t[13]=n[13],t[14]=n[14],t[15]=n[15]),t[4]=e*u+c*r,t[5]=o*u+s*r,t[6]=i*u+M*r,t[7]=h*u+f*r,t[8]=c*u-e*r,t[9]=s*u-o*r,t[10]=M*u-i*r,t[11]=f*u-h*r,t}function cn(t,n,a){var r=Math.sin(a),u=Math.cos(a),e=n[0],o=n[1],i=n[2],h=n[3],c=n[8],s=n[9],M=n[10],f=n[11];return n!==t&&(t[4]=n[4],t[5]=n[5],t[6]=n[6],t[7]=n[7],t[12]=n[12],t[13]=n[13],t[14]=n[14],t[15]=n[15]),t[0]=e*u-c*r,t[1]=o*u-s*r,t[2]=i*u-M*r,t[3]=h*u-f*r,t[8]=e*r+c*u,t[9]=o*r+s*u,t[10]=i*r+M*u,t[11]=h*r+f*u,t}function sn(t,n,a){var r=Math.sin(a),u=Math.cos(a),e=n[0],o=n[1],i=n[2],h=n[3],c=n[4],s=n[5],M=n[6],f=n[7];return n!==t&&(t[8]=n[8],t[9]=n[9],t[10]=n[10],t[11]=n[11],t[12]=n[12],t[13]=n[13],t[14]=n[14],t[15]=n[15]),t[0]=e*u+c*r,t[1]=o*u+s*r,t[2]=i*u+M*r,t[3]=h*u+f*r,t[4]=c*u-e*r,t[5]=s*u-o*r,t[6]=M*u-i*r,t[7]=f*u-h*r,t}function Mn(t,n){return t[0]=1,t[1]=0,t[2]=0,t[3]=0,t[4]=0,t[5]=1,t[6]=0,t[7]=0,t[8]=0,t[9]=0,t[10]=1,t[11]=0,t[12]=n[0],t[13]=n[1],t[14]=n[2],t[15]=1,t}function fn(t,n){return t[0]=n[0],t[1]=0,t[2]=0,t[3]=0,t[4]=0,t[5]=n[1],t[6]=0,t[7]=0,t[8]=0,t[9]=0,t[10]=n[2],t[11]=0,t[12]=0,t[13]=0,t[14]=0,t[15]=1,t}function ln(t,n,a){var r,u,e,o=a[0],i=a[1],h=a[2],c=Math.hypot(o,i,h);return c<M?null:(o*=c=1/c,i*=c,h*=c,r=Math.sin(n),e=1-(u=Math.cos(n)),t[0]=o*o*e+u,t[1]=i*o*e+h*r,t[2]=h*o*e-i*r,t[3]=0,t[4]=o*i*e-h*r,t[5]=i*i*e+u,t[6]=h*i*e+o*r,t[7]=0,t[8]=o*h*e+i*r,t[9]=i*h*e-o*r,t[10]=h*h*e+u,t[11]=0,t[12]=0,t[13]=0,t[14]=0,t[15]=1,t)}function vn(t,n){var a=Math.sin(n),r=Math.cos(n);return t[0]=1,t[1]=0,t[2]=0,t[3]=0,t[4]=0,t[5]=r,t[6]=a,t[7]=0,t[8]=0,t[9]=-a,t[10]=r,t[11]=0,t[12]=0,t[13]=0,t[14]=0,t[15]=1,t}function bn(t,n){var a=Math.sin(n),r=Math.cos(n);return t[0]=r,t[1]=0,t[2]=-a,t[3]=0,t[4]=0,t[5]=1,t[6]=0,t[7]=0,t[8]=a,t[9]=0,t[10]=r,t[11]=0,t[12]=0,t[13]=0,t[14]=0,t[15]=1,t}function mn(t,n){var a=Math.sin(n),r=Math.cos(n);return t[0]=r,t[1]=a,t[2]=0,t[3]=0,t[4]=-a,t[5]=r,t[6]=0,t[7]=0,t[8]=0,t[9]=0,t[10]=1,t[11]=0,t[12]=0,t[13]=0,t[14]=0,t[15]=1,t}function dn(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=r+r,h=u+u,c=e+e,s=r*i,M=r*h,f=r*c,l=u*h,v=u*c,b=e*c,m=o*i,d=o*h,x=o*c;return t[0]=1-(l+b),t[1]=M+x,t[2]=f-d,t[3]=0,t[4]=M-x,t[5]=1-(s+b),t[6]=v+m,t[7]=0,t[8]=f+d,t[9]=v-m,t[10]=1-(s+l),t[11]=0,t[12]=a[0],t[13]=a[1],t[14]=a[2],t[15]=1,t}function xn(t,n){var a=new f(3),r=-n[0],u=-n[1],e=-n[2],o=n[3],i=n[4],h=n[5],c=n[6],s=n[7],M=r*r+u*u+e*e+o*o;return M>0?(a[0]=2*(i*o+s*r+h*e-c*u)/M,a[1]=2*(h*o+s*u+c*r-i*e)/M,a[2]=2*(c*o+s*e+i*u-h*r)/M):(a[0]=2*(i*o+s*r+h*e-c*u),a[1]=2*(h*o+s*u+c*r-i*e),a[2]=2*(c*o+s*e+i*u-h*r)),dn(t,n,a),t}function yn(t,n){return t[0]=n[12],t[1]=n[13],t[2]=n[14],t}function pn(t,n){var a=n[0],r=n[1],u=n[2],e=n[4],o=n[5],i=n[6],h=n[8],c=n[9],s=n[10];return t[0]=Math.hypot(a,r,u),t[1]=Math.hypot(e,o,i),t[2]=Math.hypot(h,c,s),t}function qn(t,n){var a=new f(3);pn(a,n);var r=1/a[0],u=1/a[1],e=1/a[2],o=n[0]*r,i=n[1]*u,h=n[2]*e,c=n[4]*r,s=n[5]*u,M=n[6]*e,l=n[8]*r,v=n[9]*u,b=n[10]*e,m=o+s+b,d=0;return m>0?(d=2*Math.sqrt(m+1),t[3]=.25*d,t[0]=(M-v)/d,t[1]=(l-h)/d,t[2]=(i-c)/d):o>s&&o>b?(d=2*Math.sqrt(1+o-s-b),t[3]=(M-v)/d,t[0]=.25*d,t[1]=(i+c)/d,t[2]=(l+h)/d):s>b?(d=2*Math.sqrt(1+s-o-b),t[3]=(l-h)/d,t[0]=(i+c)/d,t[1]=.25*d,t[2]=(M+v)/d):(d=2*Math.sqrt(1+b-o-s),t[3]=(i-c)/d,t[0]=(l+h)/d,t[1]=(M+v)/d,t[2]=.25*d),t}function wn(t,n,a,r){var u=n[0],e=n[1],o=n[2],i=n[3],h=u+u,c=e+e,s=o+o,M=u*h,f=u*c,l=u*s,v=e*c,b=e*s,m=o*s,d=i*h,x=i*c,y=i*s,p=r[0],q=r[1],w=r[2];return t[0]=(1-(v+m))*p,t[1]=(f+y)*p,t[2]=(l-x)*p,t[3]=0,t[4]=(f-y)*q,t[5]=(1-(M+m))*q,t[6]=(b+d)*q,t[7]=0,t[8]=(l+x)*w,t[9]=(b-d)*w,t[10]=(1-(M+v))*w,t[11]=0,t[12]=a[0],t[13]=a[1],t[14]=a[2],t[15]=1,t}function gn(t,n,a,r,u){var e=n[0],o=n[1],i=n[2],h=n[3],c=e+e,s=o+o,M=i+i,f=e*c,l=e*s,v=e*M,b=o*s,m=o*M,d=i*M,x=h*c,y=h*s,p=h*M,q=r[0],w=r[1],g=r[2],A=u[0],P=u[1],S=u[2],R=(1-(b+d))*q,T=(l+p)*q,I=(v-y)*q,E=(l-p)*w,D=(1-(f+d))*w,F=(m+x)*w,L=(v+y)*g,V=(m-x)*g,j=(1-(f+b))*g;return t[0]=R,t[1]=T,t[2]=I,t[3]=0,t[4]=E,t[5]=D,t[6]=F,t[7]=0,t[8]=L,t[9]=V,t[10]=j,t[11]=0,t[12]=a[0]+A-(R*A+E*P+L*S),t[13]=a[1]+P-(T*A+D*P+V*S),t[14]=a[2]+S-(I*A+F*P+j*S),t[15]=1,t}function An(t,n){var a=n[0],r=n[1],u=n[2],e=n[3],o=a+a,i=r+r,h=u+u,c=a*o,s=r*o,M=r*i,f=u*o,l=u*i,v=u*h,b=e*o,m=e*i,d=e*h;return t[0]=1-M-v,t[1]=s+d,t[2]=f-m,t[3]=0,t[4]=s-d,t[5]=1-c-v,t[6]=l+b,t[7]=0,t[8]=f+m,t[9]=l-b,t[10]=1-c-M,t[11]=0,t[12]=0,t[13]=0,t[14]=0,t[15]=1,t}function Pn(t,n,a,r,u,e,o){var i=1/(a-n),h=1/(u-r),c=1/(e-o);return t[0]=2*e*i,t[1]=0,t[2]=0,t[3]=0,t[4]=0,t[5]=2*e*h,t[6]=0,t[7]=0,t[8]=(a+n)*i,t[9]=(u+r)*h,t[10]=(o+e)*c,t[11]=-1,t[12]=0,t[13]=0,t[14]=o*e*2*c,t[15]=0,t}function Sn(t,n,a,r,u){var e,o=1/Math.tan(n/2);return t[0]=o/a,t[1]=0,t[2]=0,t[3]=0,t[4]=0,t[5]=o,t[6]=0,t[7]=0,t[8]=0,t[9]=0,t[11]=-1,t[12]=0,t[13]=0,t[15]=0,null!=u&&u!==1/0?(e=1/(r-u),t[10]=(u+r)*e,t[14]=2*u*r*e):(t[10]=-1,t[14]=-2*r),t}function Rn(t,n,a,r){var u=Math.tan(n.upDegrees*Math.PI/180),e=Math.tan(n.downDegrees*Math.PI/180),o=Math.tan(n.leftDegrees*Math.PI/180),i=Math.tan(n.rightDegrees*Math.PI/180),h=2/(o+i),c=2/(u+e);return t[0]=h,t[1]=0,t[2]=0,t[3]=0,t[4]=0,t[5]=c,t[6]=0,t[7]=0,t[8]=-(o-i)*h*.5,t[9]=(u-e)*c*.5,t[10]=r/(a-r),t[11]=-1,t[12]=0,t[13]=0,t[14]=r*a/(a-r),t[15]=0,t}function Tn(t,n,a,r,u,e,o){var i=1/(n-a),h=1/(r-u),c=1/(e-o);return t[0]=-2*i,t[1]=0,t[2]=0,t[3]=0,t[4]=0,t[5]=-2*h,t[6]=0,t[7]=0,t[8]=0,t[9]=0,t[10]=2*c,t[11]=0,t[12]=(n+a)*i,t[13]=(u+r)*h,t[14]=(o+e)*c,t[15]=1,t}function In(t,n,a,r){var u,e,o,i,h,c,s,f,l,v,b=n[0],m=n[1],d=n[2],x=r[0],y=r[1],p=r[2],q=a[0],w=a[1],g=a[2];return Math.abs(b-q)<M&&Math.abs(m-w)<M&&Math.abs(d-g)<M?Kt(t):(s=b-q,f=m-w,l=d-g,u=y*(l*=v=1/Math.hypot(s,f,l))-p*(f*=v),e=p*(s*=v)-x*l,o=x*f-y*s,(v=Math.hypot(u,e,o))?(u*=v=1/v,e*=v,o*=v):(u=0,e=0,o=0),i=f*o-l*e,h=l*u-s*o,c=s*e-f*u,(v=Math.hypot(i,h,c))?(i*=v=1/v,h*=v,c*=v):(i=0,h=0,c=0),t[0]=u,t[1]=i,t[2]=s,t[3]=0,t[4]=e,t[5]=h,t[6]=f,t[7]=0,t[8]=o,t[9]=c,t[10]=l,t[11]=0,t[12]=-(u*b+e*m+o*d),t[13]=-(i*b+h*m+c*d),t[14]=-(s*b+f*m+l*d),t[15]=1,t)}function En(t,n,a,r){var u=n[0],e=n[1],o=n[2],i=r[0],h=r[1],c=r[2],s=u-a[0],M=e-a[1],f=o-a[2],l=s*s+M*M+f*f;l>0&&(s*=l=1/Math.sqrt(l),M*=l,f*=l);var v=h*f-c*M,b=c*s-i*f,m=i*M-h*s;return(l=v*v+b*b+m*m)>0&&(v*=l=1/Math.sqrt(l),b*=l,m*=l),t[0]=v,t[1]=b,t[2]=m,t[3]=0,t[4]=M*m-f*b,t[5]=f*v-s*m,t[6]=s*b-M*v,t[7]=0,t[8]=s,t[9]=M,t[10]=f,t[11]=0,t[12]=u,t[13]=e,t[14]=o,t[15]=1,t}function Dn(t){return"mat4("+t[0]+", "+t[1]+", "+t[2]+", "+t[3]+", "+t[4]+", "+t[5]+", "+t[6]+", "+t[7]+", "+t[8]+", "+t[9]+", "+t[10]+", "+t[11]+", "+t[12]+", "+t[13]+", "+t[14]+", "+t[15]+")"}function Fn(t){return Math.hypot(t[0],t[1],t[3],t[4],t[5],t[6],t[7],t[8],t[9],t[10],t[11],t[12],t[13],t[14],t[15])}function Ln(t,n,a){return t[0]=n[0]+a[0],t[1]=n[1]+a[1],t[2]=n[2]+a[2],t[3]=n[3]+a[3],t[4]=n[4]+a[4],t[5]=n[5]+a[5],t[6]=n[6]+a[6],t[7]=n[7]+a[7],t[8]=n[8]+a[8],t[9]=n[9]+a[9],t[10]=n[10]+a[10],t[11]=n[11]+a[11],t[12]=n[12]+a[12],t[13]=n[13]+a[13],t[14]=n[14]+a[14],t[15]=n[15]+a[15],t}function Vn(t,n,a){return t[0]=n[0]-a[0],t[1]=n[1]-a[1],t[2]=n[2]-a[2],t[3]=n[3]-a[3],t[4]=n[4]-a[4],t[5]=n[5]-a[5],t[6]=n[6]-a[6],t[7]=n[7]-a[7],t[8]=n[8]-a[8],t[9]=n[9]-a[9],t[10]=n[10]-a[10],t[11]=n[11]-a[11],t[12]=n[12]-a[12],t[13]=n[13]-a[13],t[14]=n[14]-a[14],t[15]=n[15]-a[15],t}function jn(t,n,a){return t[0]=n[0]*a,t[1]=n[1]*a,t[2]=n[2]*a,t[3]=n[3]*a,t[4]=n[4]*a,t[5]=n[5]*a,t[6]=n[6]*a,t[7]=n[7]*a,t[8]=n[8]*a,t[9]=n[9]*a,t[10]=n[10]*a,t[11]=n[11]*a,t[12]=n[12]*a,t[13]=n[13]*a,t[14]=n[14]*a,t[15]=n[15]*a,t}function zn(t,n,a,r){return t[0]=n[0]+a[0]*r,t[1]=n[1]+a[1]*r,t[2]=n[2]+a[2]*r,t[3]=n[3]+a[3]*r,t[4]=n[4]+a[4]*r,t[5]=n[5]+a[5]*r,t[6]=n[6]+a[6]*r,t[7]=n[7]+a[7]*r,t[8]=n[8]+a[8]*r,t[9]=n[9]+a[9]*r,t[10]=n[10]+a[10]*r,t[11]=n[11]+a[11]*r,t[12]=n[12]+a[12]*r,t[13]=n[13]+a[13]*r,t[14]=n[14]+a[14]*r,t[15]=n[15]+a[15]*r,t}function On(t,n){return t[0]===n[0]&&t[1]===n[1]&&t[2]===n[2]&&t[3]===n[3]&&t[4]===n[4]&&t[5]===n[5]&&t[6]===n[6]&&t[7]===n[7]&&t[8]===n[8]&&t[9]===n[9]&&t[10]===n[10]&&t[11]===n[11]&&t[12]===n[12]&&t[13]===n[13]&&t[14]===n[14]&&t[15]===n[15]}function Qn(t,n){var a=t[0],r=t[1],u=t[2],e=t[3],o=t[4],i=t[5],h=t[6],c=t[7],s=t[8],f=t[9],l=t[10],v=t[11],b=t[12],m=t[13],d=t[14],x=t[15],y=n[0],p=n[1],q=n[2],w=n[3],g=n[4],A=n[5],P=n[6],S=n[7],R=n[8],T=n[9],I=n[10],E=n[11],D=n[12],F=n[13],L=n[14],V=n[15];return Math.abs(a-y)<=M*Math.max(1,Math.abs(a),Math.abs(y))&&Math.abs(r-p)<=M*Math.max(1,Math.abs(r),Math.abs(p))&&Math.abs(u-q)<=M*Math.max(1,Math.abs(u),Math.abs(q))&&Math.abs(e-w)<=M*Math.max(1,Math.abs(e),Math.abs(w))&&Math.abs(o-g)<=M*Math.max(1,Math.abs(o),Math.abs(g))&&Math.abs(i-A)<=M*Math.max(1,Math.abs(i),Math.abs(A))&&Math.abs(h-P)<=M*Math.max(1,Math.abs(h),Math.abs(P))&&Math.abs(c-S)<=M*Math.max(1,Math.abs(c),Math.abs(S))&&Math.abs(s-R)<=M*Math.max(1,Math.abs(s),Math.abs(R))&&Math.abs(f-T)<=M*Math.max(1,Math.abs(f),Math.abs(T))&&Math.abs(l-I)<=M*Math.max(1,Math.abs(l),Math.abs(I))&&Math.abs(v-E)<=M*Math.max(1,Math.abs(v),Math.abs(E))&&Math.abs(b-D)<=M*Math.max(1,Math.abs(b),Math.abs(D))&&Math.abs(m-F)<=M*Math.max(1,Math.abs(m),Math.abs(F))&&Math.abs(d-L)<=M*Math.max(1,Math.abs(d),Math.abs(L))&&Math.abs(x-V)<=M*Math.max(1,Math.abs(x),Math.abs(V))}var Yn=rn,Xn=Vn;function Zn(){var t=new f(3);return f!=Float32Array&&(t[0]=0,t[1]=0,t[2]=0),t}function _n(t){var n=new f(3);return n[0]=t[0],n[1]=t[1],n[2]=t[2],n}function Bn(t){var n=t[0],a=t[1],r=t[2];return Math.hypot(n,a,r)}function Nn(t,n,a){var r=new f(3);return r[0]=t,r[1]=n,r[2]=a,r}function kn(t,n){return t[0]=n[0],t[1]=n[1],t[2]=n[2],t}function Un(t,n,a,r){return t[0]=n,t[1]=a,t[2]=r,t}function Wn(t,n,a){return t[0]=n[0]+a[0],t[1]=n[1]+a[1],t[2]=n[2]+a[2],t}function Cn(t,n,a){return t[0]=n[0]-a[0],t[1]=n[1]-a[1],t[2]=n[2]-a[2],t}function Gn(t,n,a){return t[0]=n[0]*a[0],t[1]=n[1]*a[1],t[2]=n[2]*a[2],t}function Hn(t,n,a){return t[0]=n[0]/a[0],t[1]=n[1]/a[1],t[2]=n[2]/a[2],t}function Jn(t,n){return t[0]=Math.ceil(n[0]),t[1]=Math.ceil(n[1]),t[2]=Math.ceil(n[2]),t}function Kn(t,n){return t[0]=Math.floor(n[0]),t[1]=Math.floor(n[1]),t[2]=Math.floor(n[2]),t}function $n(t,n,a){return t[0]=Math.min(n[0],a[0]),t[1]=Math.min(n[1],a[1]),t[2]=Math.min(n[2],a[2]),t}function ta(t,n,a){return t[0]=Math.max(n[0],a[0]),t[1]=Math.max(n[1],a[1]),t[2]=Math.max(n[2],a[2]),t}function na(t,n){return t[0]=Math.round(n[0]),t[1]=Math.round(n[1]),t[2]=Math.round(n[2]),t}function aa(t,n,a){return t[0]=n[0]*a,t[1]=n[1]*a,t[2]=n[2]*a,t}function ra(t,n,a,r){return t[0]=n[0]+a[0]*r,t[1]=n[1]+a[1]*r,t[2]=n[2]+a[2]*r,t}function ua(t,n){var a=n[0]-t[0],r=n[1]-t[1],u=n[2]-t[2];return Math.hypot(a,r,u)}function ea(t,n){var a=n[0]-t[0],r=n[1]-t[1],u=n[2]-t[2];return a*a+r*r+u*u}function oa(t){var n=t[0],a=t[1],r=t[2];return n*n+a*a+r*r}function ia(t,n){return t[0]=-n[0],t[1]=-n[1],t[2]=-n[2],t}function ha(t,n){return t[0]=1/n[0],t[1]=1/n[1],t[2]=1/n[2],t}function ca(t,n){var a=n[0],r=n[1],u=n[2],e=a*a+r*r+u*u;return e>0&&(e=1/Math.sqrt(e)),t[0]=n[0]*e,t[1]=n[1]*e,t[2]=n[2]*e,t}function sa(t,n){return t[0]*n[0]+t[1]*n[1]+t[2]*n[2]}function Ma(t,n,a){var r=n[0],u=n[1],e=n[2],o=a[0],i=a[1],h=a[2];return t[0]=u*h-e*i,t[1]=e*o-r*h,t[2]=r*i-u*o,t}function fa(t,n,a,r){var u=n[0],e=n[1],o=n[2];return t[0]=u+r*(a[0]-u),t[1]=e+r*(a[1]-e),t[2]=o+r*(a[2]-o),t}function la(t,n,a,r,u,e){var o=e*e,i=o*(2*e-3)+1,h=o*(e-2)+e,c=o*(e-1),s=o*(3-2*e);return t[0]=n[0]*i+a[0]*h+r[0]*c+u[0]*s,t[1]=n[1]*i+a[1]*h+r[1]*c+u[1]*s,t[2]=n[2]*i+a[2]*h+r[2]*c+u[2]*s,t}function va(t,n,a,r,u,e){var o=1-e,i=o*o,h=e*e,c=i*o,s=3*e*i,M=3*h*o,f=h*e;return t[0]=n[0]*c+a[0]*s+r[0]*M+u[0]*f,t[1]=n[1]*c+a[1]*s+r[1]*M+u[1]*f,t[2]=n[2]*c+a[2]*s+r[2]*M+u[2]*f,t}function ba(t,n){n=n||1;var a=2*l()*Math.PI,r=2*l()-1,u=Math.sqrt(1-r*r)*n;return t[0]=Math.cos(a)*u,t[1]=Math.sin(a)*u,t[2]=r*n,t}function ma(t,n,a){var r=n[0],u=n[1],e=n[2],o=a[3]*r+a[7]*u+a[11]*e+a[15];return o=o||1,t[0]=(a[0]*r+a[4]*u+a[8]*e+a[12])/o,t[1]=(a[1]*r+a[5]*u+a[9]*e+a[13])/o,t[2]=(a[2]*r+a[6]*u+a[10]*e+a[14])/o,t}function da(t,n,a){var r=n[0],u=n[1],e=n[2];return t[0]=r*a[0]+u*a[3]+e*a[6],t[1]=r*a[1]+u*a[4]+e*a[7],t[2]=r*a[2]+u*a[5]+e*a[8],t}function xa(t,n,a){var r=a[0],u=a[1],e=a[2],o=a[3],i=n[0],h=n[1],c=n[2],s=u*c-e*h,M=e*i-r*c,f=r*h-u*i,l=u*f-e*M,v=e*s-r*f,b=r*M-u*s,m=2*o;return s*=m,M*=m,f*=m,l*=2,v*=2,b*=2,t[0]=i+s+l,t[1]=h+M+v,t[2]=c+f+b,t}function ya(t,n,a,r){var u=[],e=[];return u[0]=n[0]-a[0],u[1]=n[1]-a[1],u[2]=n[2]-a[2],e[0]=u[0],e[1]=u[1]*Math.cos(r)-u[2]*Math.sin(r),e[2]=u[1]*Math.sin(r)+u[2]*Math.cos(r),t[0]=e[0]+a[0],t[1]=e[1]+a[1],t[2]=e[2]+a[2],t}function pa(t,n,a,r){var u=[],e=[];return u[0]=n[0]-a[0],u[1]=n[1]-a[1],u[2]=n[2]-a[2],e[0]=u[2]*Math.sin(r)+u[0]*Math.cos(r),e[1]=u[1],e[2]=u[2]*Math.cos(r)-u[0]*Math.sin(r),t[0]=e[0]+a[0],t[1]=e[1]+a[1],t[2]=e[2]+a[2],t}function qa(t,n,a,r){var u=[],e=[];return u[0]=n[0]-a[0],u[1]=n[1]-a[1],u[2]=n[2]-a[2],e[0]=u[0]*Math.cos(r)-u[1]*Math.sin(r),e[1]=u[0]*Math.sin(r)+u[1]*Math.cos(r),e[2]=u[2],t[0]=e[0]+a[0],t[1]=e[1]+a[1],t[2]=e[2]+a[2],t}function wa(t,n){var a=Nn(t[0],t[1],t[2]),r=Nn(n[0],n[1],n[2]);ca(a,a),ca(r,r);var u=sa(a,r);return u>1?0:u<-1?Math.PI:Math.acos(u)}function ga(t){return t[0]=0,t[1]=0,t[2]=0,t}function Aa(t){return"vec3("+t[0]+", "+t[1]+", "+t[2]+")"}function Pa(t,n){return t[0]===n[0]&&t[1]===n[1]&&t[2]===n[2]}function Sa(t,n){var a=t[0],r=t[1],u=t[2],e=n[0],o=n[1],i=n[2];return Math.abs(a-e)<=M*Math.max(1,Math.abs(a),Math.abs(e))&&Math.abs(r-o)<=M*Math.max(1,Math.abs(r),Math.abs(o))&&Math.abs(u-i)<=M*Math.max(1,Math.abs(u),Math.abs(i))}var Ra,Ta=Cn,Ia=Gn,Ea=Hn,Da=ua,Fa=ea,La=Bn,Va=oa,ja=(Ra=Zn(),function(t,n,a,r,u,e){var o,i;for(n||(n=3),a||(a=0),i=r?Math.min(r*n+a,t.length):t.length,o=a;o<i;o+=n)Ra[0]=t[o],Ra[1]=t[o+1],Ra[2]=t[o+2],u(Ra,Ra,e),t[o]=Ra[0],t[o+1]=Ra[1],t[o+2]=Ra[2];return t});function za(){var t=new f(4);return f!=Float32Array&&(t[0]=0,t[1]=0,t[2]=0,t[3]=0),t}function Oa(t){var n=new f(4);return n[0]=t[0],n[1]=t[1],n[2]=t[2],n[3]=t[3],n}function Qa(t,n,a,r){var u=new f(4);return u[0]=t,u[1]=n,u[2]=a,u[3]=r,u}function Ya(t,n){return t[0]=n[0],t[1]=n[1],t[2]=n[2],t[3]=n[3],t}function Xa(t,n,a,r,u){return t[0]=n,t[1]=a,t[2]=r,t[3]=u,t}function Za(t,n,a){return t[0]=n[0]+a[0],t[1]=n[1]+a[1],t[2]=n[2]+a[2],t[3]=n[3]+a[3],t}function _a(t,n,a){return t[0]=n[0]-a[0],t[1]=n[1]-a[1],t[2]=n[2]-a[2],t[3]=n[3]-a[3],t}function Ba(t,n,a){return t[0]=n[0]*a[0],t[1]=n[1]*a[1],t[2]=n[2]*a[2],t[3]=n[3]*a[3],t}function Na(t,n,a){return t[0]=n[0]/a[0],t[1]=n[1]/a[1],t[2]=n[2]/a[2],t[3]=n[3]/a[3],t}function ka(t,n){return t[0]=Math.ceil(n[0]),t[1]=Math.ceil(n[1]),t[2]=Math.ceil(n[2]),t[3]=Math.ceil(n[3]),t}function Ua(t,n){return t[0]=Math.floor(n[0]),t[1]=Math.floor(n[1]),t[2]=Math.floor(n[2]),t[3]=Math.floor(n[3]),t}function Wa(t,n,a){return t[0]=Math.min(n[0],a[0]),t[1]=Math.min(n[1],a[1]),t[2]=Math.min(n[2],a[2]),t[3]=Math.min(n[3],a[3]),t}function Ca(t,n,a){return t[0]=Math.max(n[0],a[0]),t[1]=Math.max(n[1],a[1]),t[2]=Math.max(n[2],a[2]),t[3]=Math.max(n[3],a[3]),t}function Ga(t,n){return t[0]=Math.round(n[0]),t[1]=Math.round(n[1]),t[2]=Math.round(n[2]),t[3]=Math.round(n[3]),t}function Ha(t,n,a){return t[0]=n[0]*a,t[1]=n[1]*a,t[2]=n[2]*a,t[3]=n[3]*a,t}function Ja(t,n,a,r){return t[0]=n[0]+a[0]*r,t[1]=n[1]+a[1]*r,t[2]=n[2]+a[2]*r,t[3]=n[3]+a[3]*r,t}function Ka(t,n){var a=n[0]-t[0],r=n[1]-t[1],u=n[2]-t[2],e=n[3]-t[3];return Math.hypot(a,r,u,e)}function $a(t,n){var a=n[0]-t[0],r=n[1]-t[1],u=n[2]-t[2],e=n[3]-t[3];return a*a+r*r+u*u+e*e}function tr(t){var n=t[0],a=t[1],r=t[2],u=t[3];return Math.hypot(n,a,r,u)}function nr(t){var n=t[0],a=t[1],r=t[2],u=t[3];return n*n+a*a+r*r+u*u}function ar(t,n){return t[0]=-n[0],t[1]=-n[1],t[2]=-n[2],t[3]=-n[3],t}function rr(t,n){return t[0]=1/n[0],t[1]=1/n[1],t[2]=1/n[2],t[3]=1/n[3],t}function ur(t,n){var a=n[0],r=n[1],u=n[2],e=n[3],o=a*a+r*r+u*u+e*e;return o>0&&(o=1/Math.sqrt(o)),t[0]=a*o,t[1]=r*o,t[2]=u*o,t[3]=e*o,t}function er(t,n){return t[0]*n[0]+t[1]*n[1]+t[2]*n[2]+t[3]*n[3]}function or(t,n,a,r){var u=a[0]*r[1]-a[1]*r[0],e=a[0]*r[2]-a[2]*r[0],o=a[0]*r[3]-a[3]*r[0],i=a[1]*r[2]-a[2]*r[1],h=a[1]*r[3]-a[3]*r[1],c=a[2]*r[3]-a[3]*r[2],s=n[0],M=n[1],f=n[2],l=n[3];return t[0]=M*c-f*h+l*i,t[1]=-s*c+f*o-l*e,t[2]=s*h-M*o+l*u,t[3]=-s*i+M*e-f*u,t}function ir(t,n,a,r){var u=n[0],e=n[1],o=n[2],i=n[3];return t[0]=u+r*(a[0]-u),t[1]=e+r*(a[1]-e),t[2]=o+r*(a[2]-o),t[3]=i+r*(a[3]-i),t}function hr(t,n){var a,r,u,e,o,i;n=n||1;do{o=(a=2*l()-1)*a+(r=2*l()-1)*r}while(o>=1);do{i=(u=2*l()-1)*u+(e=2*l()-1)*e}while(i>=1);var h=Math.sqrt((1-o)/i);return t[0]=n*a,t[1]=n*r,t[2]=n*u*h,t[3]=n*e*h,t}function cr(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3];return t[0]=a[0]*r+a[4]*u+a[8]*e+a[12]*o,t[1]=a[1]*r+a[5]*u+a[9]*e+a[13]*o,t[2]=a[2]*r+a[6]*u+a[10]*e+a[14]*o,t[3]=a[3]*r+a[7]*u+a[11]*e+a[15]*o,t}function sr(t,n,a){var r=n[0],u=n[1],e=n[2],o=a[0],i=a[1],h=a[2],c=a[3],s=c*r+i*e-h*u,M=c*u+h*r-o*e,f=c*e+o*u-i*r,l=-o*r-i*u-h*e;return t[0]=s*c+l*-o+M*-h-f*-i,t[1]=M*c+l*-i+f*-o-s*-h,t[2]=f*c+l*-h+s*-i-M*-o,t[3]=n[3],t}function Mr(t){return t[0]=0,t[1]=0,t[2]=0,t[3]=0,t}function fr(t){return"vec4("+t[0]+", "+t[1]+", "+t[2]+", "+t[3]+")"}function lr(t,n){return t[0]===n[0]&&t[1]===n[1]&&t[2]===n[2]&&t[3]===n[3]}function vr(t,n){var a=t[0],r=t[1],u=t[2],e=t[3],o=n[0],i=n[1],h=n[2],c=n[3];return Math.abs(a-o)<=M*Math.max(1,Math.abs(a),Math.abs(o))&&Math.abs(r-i)<=M*Math.max(1,Math.abs(r),Math.abs(i))&&Math.abs(u-h)<=M*Math.max(1,Math.abs(u),Math.abs(h))&&Math.abs(e-c)<=M*Math.max(1,Math.abs(e),Math.abs(c))}var br=_a,mr=Ba,dr=Na,xr=Ka,yr=$a,pr=tr,qr=nr,wr=function(){var t=za();return function(n,a,r,u,e,o){var i,h;for(a||(a=4),r||(r=0),h=u?Math.min(u*a+r,n.length):n.length,i=r;i<h;i+=a)t[0]=n[i],t[1]=n[i+1],t[2]=n[i+2],t[3]=n[i+3],e(t,t,o),n[i]=t[0],n[i+1]=t[1],n[i+2]=t[2],n[i+3]=t[3];return n}}();function gr(){var t=new f(4);return f!=Float32Array&&(t[0]=0,t[1]=0,t[2]=0),t[3]=1,t}function Ar(t){return t[0]=0,t[1]=0,t[2]=0,t[3]=1,t}function Pr(t,n,a){a*=.5;var r=Math.sin(a);return t[0]=r*n[0],t[1]=r*n[1],t[2]=r*n[2],t[3]=Math.cos(a),t}function Sr(t,n){var a=2*Math.acos(n[3]),r=Math.sin(a/2);return r>M?(t[0]=n[0]/r,t[1]=n[1]/r,t[2]=n[2]/r):(t[0]=1,t[1]=0,t[2]=0),a}function Rr(t,n){var a=au(t,n);return Math.acos(2*a*a-1)}function Tr(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=a[0],h=a[1],c=a[2],s=a[3];return t[0]=r*s+o*i+u*c-e*h,t[1]=u*s+o*h+e*i-r*c,t[2]=e*s+o*c+r*h-u*i,t[3]=o*s-r*i-u*h-e*c,t}function Ir(t,n,a){a*=.5;var r=n[0],u=n[1],e=n[2],o=n[3],i=Math.sin(a),h=Math.cos(a);return t[0]=r*h+o*i,t[1]=u*h+e*i,t[2]=e*h-u*i,t[3]=o*h-r*i,t}function Er(t,n,a){a*=.5;var r=n[0],u=n[1],e=n[2],o=n[3],i=Math.sin(a),h=Math.cos(a);return t[0]=r*h-e*i,t[1]=u*h+o*i,t[2]=e*h+r*i,t[3]=o*h-u*i,t}function Dr(t,n,a){a*=.5;var r=n[0],u=n[1],e=n[2],o=n[3],i=Math.sin(a),h=Math.cos(a);return t[0]=r*h+u*i,t[1]=u*h-r*i,t[2]=e*h+o*i,t[3]=o*h-e*i,t}function Fr(t,n){var a=n[0],r=n[1],u=n[2];return t[0]=a,t[1]=r,t[2]=u,t[3]=Math.sqrt(Math.abs(1-a*a-r*r-u*u)),t}function Lr(t,n){var a=n[0],r=n[1],u=n[2],e=n[3],o=Math.sqrt(a*a+r*r+u*u),i=Math.exp(e),h=o>0?i*Math.sin(o)/o:0;return t[0]=a*h,t[1]=r*h,t[2]=u*h,t[3]=i*Math.cos(o),t}function Vr(t,n){var a=n[0],r=n[1],u=n[2],e=n[3],o=Math.sqrt(a*a+r*r+u*u),i=o>0?Math.atan2(o,e)/o:0;return t[0]=a*i,t[1]=r*i,t[2]=u*i,t[3]=.5*Math.log(a*a+r*r+u*u+e*e),t}function jr(t,n,a){return Vr(t,n),nu(t,t,a),Lr(t,t),t}function zr(t,n,a,r){var u,e,o,i,h,c=n[0],s=n[1],f=n[2],l=n[3],v=a[0],b=a[1],m=a[2],d=a[3];return(e=c*v+s*b+f*m+l*d)<0&&(e=-e,v=-v,b=-b,m=-m,d=-d),1-e>M?(u=Math.acos(e),o=Math.sin(u),i=Math.sin((1-r)*u)/o,h=Math.sin(r*u)/o):(i=1-r,h=r),t[0]=i*c+h*v,t[1]=i*s+h*b,t[2]=i*f+h*m,t[3]=i*l+h*d,t}function Or(t){var n=l(),a=l(),r=l(),u=Math.sqrt(1-n),e=Math.sqrt(n);return t[0]=u*Math.sin(2*Math.PI*a),t[1]=u*Math.cos(2*Math.PI*a),t[2]=e*Math.sin(2*Math.PI*r),t[3]=e*Math.cos(2*Math.PI*r),t}function Qr(t,n){var a=n[0],r=n[1],u=n[2],e=n[3],o=a*a+r*r+u*u+e*e,i=o?1/o:0;return t[0]=-a*i,t[1]=-r*i,t[2]=-u*i,t[3]=e*i,t}function Yr(t,n){return t[0]=-n[0],t[1]=-n[1],t[2]=-n[2],t[3]=n[3],t}function Xr(t,n){var a,r=n[0]+n[4]+n[8];if(r>0)a=Math.sqrt(r+1),t[3]=.5*a,a=.5/a,t[0]=(n[5]-n[7])*a,t[1]=(n[6]-n[2])*a,t[2]=(n[1]-n[3])*a;else{var u=0;n[4]>n[0]&&(u=1),n[8]>n[3*u+u]&&(u=2);var e=(u+1)%3,o=(u+2)%3;a=Math.sqrt(n[3*u+u]-n[3*e+e]-n[3*o+o]+1),t[u]=.5*a,a=.5/a,t[3]=(n[3*e+o]-n[3*o+e])*a,t[e]=(n[3*e+u]+n[3*u+e])*a,t[o]=(n[3*o+u]+n[3*u+o])*a}return t}function Zr(t,n,a,r){var u=.5*Math.PI/180;n*=u,a*=u,r*=u;var e=Math.sin(n),o=Math.cos(n),i=Math.sin(a),h=Math.cos(a),c=Math.sin(r),s=Math.cos(r);return t[0]=e*h*s-o*i*c,t[1]=o*i*s+e*h*c,t[2]=o*h*c-e*i*s,t[3]=o*h*s+e*i*c,t}function _r(t){return"quat("+t[0]+", "+t[1]+", "+t[2]+", "+t[3]+")"}var Br,Nr,kr,Ur,Wr,Cr,Gr=Oa,Hr=Qa,Jr=Ya,Kr=Xa,$r=Za,tu=Tr,nu=Ha,au=er,ru=ir,uu=tr,eu=uu,ou=nr,iu=ou,hu=ur,cu=lr,su=vr,Mu=(Br=Zn(),Nr=Nn(1,0,0),kr=Nn(0,1,0),function(t,n,a){var r=sa(n,a);return r<-.999999?(Ma(Br,Nr,n),La(Br)<1e-6&&Ma(Br,kr,n),ca(Br,Br),Pr(t,Br,Math.PI),t):r>.999999?(t[0]=0,t[1]=0,t[2]=0,t[3]=1,t):(Ma(Br,n,a),t[0]=Br[0],t[1]=Br[1],t[2]=Br[2],t[3]=1+r,hu(t,t))}),fu=(Ur=gr(),Wr=gr(),function(t,n,a,r,u,e){return zr(Ur,n,u,e),zr(Wr,a,r,e),zr(t,Ur,Wr,2*e*(1-e)),t}),lu=(Cr=bt(),function(t,n,a,r){return Cr[0]=a[0],Cr[3]=a[1],Cr[6]=a[2],Cr[1]=r[0],Cr[4]=r[1],Cr[7]=r[2],Cr[2]=-n[0],Cr[5]=-n[1],Cr[8]=-n[2],hu(t,Xr(t,Cr))});function vu(){var t=new f(8);return f!=Float32Array&&(t[0]=0,t[1]=0,t[2]=0,t[4]=0,t[5]=0,t[6]=0,t[7]=0),t[3]=1,t}function bu(t){var n=new f(8);return n[0]=t[0],n[1]=t[1],n[2]=t[2],n[3]=t[3],n[4]=t[4],n[5]=t[5],n[6]=t[6],n[7]=t[7],n}function mu(t,n,a,r,u,e,o,i){var h=new f(8);return h[0]=t,h[1]=n,h[2]=a,h[3]=r,h[4]=u,h[5]=e,h[6]=o,h[7]=i,h}function du(t,n,a,r,u,e,o){var i=new f(8);i[0]=t,i[1]=n,i[2]=a,i[3]=r;var h=.5*u,c=.5*e,s=.5*o;return i[4]=h*r+c*a-s*n,i[5]=c*r+s*t-h*a,i[6]=s*r+h*n-c*t,i[7]=-h*t-c*n-s*a,i}function xu(t,n,a){var r=.5*a[0],u=.5*a[1],e=.5*a[2],o=n[0],i=n[1],h=n[2],c=n[3];return t[0]=o,t[1]=i,t[2]=h,t[3]=c,t[4]=r*c+u*h-e*i,t[5]=u*c+e*o-r*h,t[6]=e*c+r*i-u*o,t[7]=-r*o-u*i-e*h,t}function yu(t,n){return t[0]=0,t[1]=0,t[2]=0,t[3]=1,t[4]=.5*n[0],t[5]=.5*n[1],t[6]=.5*n[2],t[7]=0,t}function pu(t,n){return t[0]=n[0],t[1]=n[1],t[2]=n[2],t[3]=n[3],t[4]=0,t[5]=0,t[6]=0,t[7]=0,t}function qu(t,n){var a=gr();qn(a,n);var r=new f(3);return yn(r,n),xu(t,a,r),t}function wu(t,n){return t[0]=n[0],t[1]=n[1],t[2]=n[2],t[3]=n[3],t[4]=n[4],t[5]=n[5],t[6]=n[6],t[7]=n[7],t}function gu(t){return t[0]=0,t[1]=0,t[2]=0,t[3]=1,t[4]=0,t[5]=0,t[6]=0,t[7]=0,t}function Au(t,n,a,r,u,e,o,i,h){return t[0]=n,t[1]=a,t[2]=r,t[3]=u,t[4]=e,t[5]=o,t[6]=i,t[7]=h,t}var Pu=Jr;function Su(t,n){return t[0]=n[4],t[1]=n[5],t[2]=n[6],t[3]=n[7],t}var Ru=Jr;function Tu(t,n){return t[4]=n[0],t[5]=n[1],t[6]=n[2],t[7]=n[3],t}function Iu(t,n){var a=n[4],r=n[5],u=n[6],e=n[7],o=-n[0],i=-n[1],h=-n[2],c=n[3];return t[0]=2*(a*c+e*o+r*h-u*i),t[1]=2*(r*c+e*i+u*o-a*h),t[2]=2*(u*c+e*h+a*i-r*o),t}function Eu(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=.5*a[0],h=.5*a[1],c=.5*a[2],s=n[4],M=n[5],f=n[6],l=n[7];return t[0]=r,t[1]=u,t[2]=e,t[3]=o,t[4]=o*i+u*c-e*h+s,t[5]=o*h+e*i-r*c+M,t[6]=o*c+r*h-u*i+f,t[7]=-r*i-u*h-e*c+l,t}function Du(t,n,a){var r=-n[0],u=-n[1],e=-n[2],o=n[3],i=n[4],h=n[5],c=n[6],s=n[7],M=i*o+s*r+h*e-c*u,f=h*o+s*u+c*r-i*e,l=c*o+s*e+i*u-h*r,v=s*o-i*r-h*u-c*e;return Ir(t,n,a),r=t[0],u=t[1],e=t[2],o=t[3],t[4]=M*o+v*r+f*e-l*u,t[5]=f*o+v*u+l*r-M*e,t[6]=l*o+v*e+M*u-f*r,t[7]=v*o-M*r-f*u-l*e,t}function Fu(t,n,a){var r=-n[0],u=-n[1],e=-n[2],o=n[3],i=n[4],h=n[5],c=n[6],s=n[7],M=i*o+s*r+h*e-c*u,f=h*o+s*u+c*r-i*e,l=c*o+s*e+i*u-h*r,v=s*o-i*r-h*u-c*e;return Er(t,n,a),r=t[0],u=t[1],e=t[2],o=t[3],t[4]=M*o+v*r+f*e-l*u,t[5]=f*o+v*u+l*r-M*e,t[6]=l*o+v*e+M*u-f*r,t[7]=v*o-M*r-f*u-l*e,t}function Lu(t,n,a){var r=-n[0],u=-n[1],e=-n[2],o=n[3],i=n[4],h=n[5],c=n[6],s=n[7],M=i*o+s*r+h*e-c*u,f=h*o+s*u+c*r-i*e,l=c*o+s*e+i*u-h*r,v=s*o-i*r-h*u-c*e;return Dr(t,n,a),r=t[0],u=t[1],e=t[2],o=t[3],t[4]=M*o+v*r+f*e-l*u,t[5]=f*o+v*u+l*r-M*e,t[6]=l*o+v*e+M*u-f*r,t[7]=v*o-M*r-f*u-l*e,t}function Vu(t,n,a){var r=a[0],u=a[1],e=a[2],o=a[3],i=n[0],h=n[1],c=n[2],s=n[3];return t[0]=i*o+s*r+h*e-c*u,t[1]=h*o+s*u+c*r-i*e,t[2]=c*o+s*e+i*u-h*r,t[3]=s*o-i*r-h*u-c*e,i=n[4],h=n[5],c=n[6],s=n[7],t[4]=i*o+s*r+h*e-c*u,t[5]=h*o+s*u+c*r-i*e,t[6]=c*o+s*e+i*u-h*r,t[7]=s*o-i*r-h*u-c*e,t}function ju(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=a[0],h=a[1],c=a[2],s=a[3];return t[0]=r*s+o*i+u*c-e*h,t[1]=u*s+o*h+e*i-r*c,t[2]=e*s+o*c+r*h-u*i,t[3]=o*s-r*i-u*h-e*c,i=a[4],h=a[5],c=a[6],s=a[7],t[4]=r*s+o*i+u*c-e*h,t[5]=u*s+o*h+e*i-r*c,t[6]=e*s+o*c+r*h-u*i,t[7]=o*s-r*i-u*h-e*c,t}function zu(t,n,a,r){if(Math.abs(r)<M)return wu(t,n);var u=Math.hypot(a[0],a[1],a[2]);r*=.5;var e=Math.sin(r),o=e*a[0]/u,i=e*a[1]/u,h=e*a[2]/u,c=Math.cos(r),s=n[0],f=n[1],l=n[2],v=n[3];t[0]=s*c+v*o+f*h-l*i,t[1]=f*c+v*i+l*o-s*h,t[2]=l*c+v*h+s*i-f*o,t[3]=v*c-s*o-f*i-l*h;var b=n[4],m=n[5],d=n[6],x=n[7];return t[4]=b*c+x*o+m*h-d*i,t[5]=m*c+x*i+d*o-b*h,t[6]=d*c+x*h+b*i-m*o,t[7]=x*c-b*o-m*i-d*h,t}function Ou(t,n,a){return t[0]=n[0]+a[0],t[1]=n[1]+a[1],t[2]=n[2]+a[2],t[3]=n[3]+a[3],t[4]=n[4]+a[4],t[5]=n[5]+a[5],t[6]=n[6]+a[6],t[7]=n[7]+a[7],t}function Qu(t,n,a){var r=n[0],u=n[1],e=n[2],o=n[3],i=a[4],h=a[5],c=a[6],s=a[7],M=n[4],f=n[5],l=n[6],v=n[7],b=a[0],m=a[1],d=a[2],x=a[3];return t[0]=r*x+o*b+u*d-e*m,t[1]=u*x+o*m+e*b-r*d,t[2]=e*x+o*d+r*m-u*b,t[3]=o*x-r*b-u*m-e*d,t[4]=r*s+o*i+u*c-e*h+M*x+v*b+f*d-l*m,t[5]=u*s+o*h+e*i-r*c+f*x+v*m+l*b-M*d,t[6]=e*s+o*c+r*h-u*i+l*x+v*d+M*m-f*b,t[7]=o*s-r*i-u*h-e*c+v*x-M*b-f*m-l*d,t}var Yu=Qu;function Xu(t,n,a){return t[0]=n[0]*a,t[1]=n[1]*a,t[2]=n[2]*a,t[3]=n[3]*a,t[4]=n[4]*a,t[5]=n[5]*a,t[6]=n[6]*a,t[7]=n[7]*a,t}var Zu=au;function _u(t,n,a,r){var u=1-r;return Zu(n,a)<0&&(r=-r),t[0]=n[0]*u+a[0]*r,t[1]=n[1]*u+a[1]*r,t[2]=n[2]*u+a[2]*r,t[3]=n[3]*u+a[3]*r,t[4]=n[4]*u+a[4]*r,t[5]=n[5]*u+a[5]*r,t[6]=n[6]*u+a[6]*r,t[7]=n[7]*u+a[7]*r,t}function Bu(t,n){var a=Wu(n);return t[0]=-n[0]/a,t[1]=-n[1]/a,t[2]=-n[2]/a,t[3]=n[3]/a,t[4]=-n[4]/a,t[5]=-n[5]/a,t[6]=-n[6]/a,t[7]=n[7]/a,t}function Nu(t,n){return t[0]=-n[0],t[1]=-n[1],t[2]=-n[2],t[3]=n[3],t[4]=-n[4],t[5]=-n[5],t[6]=-n[6],t[7]=n[7],t}var ku=uu,Uu=ku,Wu=ou,Cu=Wu;function Gu(t,n){var a=Wu(n);if(a>0){a=Math.sqrt(a);var r=n[0]/a,u=n[1]/a,e=n[2]/a,o=n[3]/a,i=n[4],h=n[5],c=n[6],s=n[7],M=r*i+u*h+e*c+o*s;t[0]=r,t[1]=u,t[2]=e,t[3]=o,t[4]=(i-r*M)/a,t[5]=(h-u*M)/a,t[6]=(c-e*M)/a,t[7]=(s-o*M)/a}return t}function Hu(t){return"quat2("+t[0]+", "+t[1]+", "+t[2]+", "+t[3]+", "+t[4]+", "+t[5]+", "+t[6]+", "+t[7]+")"}function Ju(t,n){return t[0]===n[0]&&t[1]===n[1]&&t[2]===n[2]&&t[3]===n[3]&&t[4]===n[4]&&t[5]===n[5]&&t[6]===n[6]&&t[7]===n[7]}function Ku(t,n){var a=t[0],r=t[1],u=t[2],e=t[3],o=t[4],i=t[5],h=t[6],c=t[7],s=n[0],f=n[1],l=n[2],v=n[3],b=n[4],m=n[5],d=n[6],x=n[7];return Math.abs(a-s)<=M*Math.max(1,Math.abs(a),Math.abs(s))&&Math.abs(r-f)<=M*Math.max(1,Math.abs(r),Math.abs(f))&&Math.abs(u-l)<=M*Math.max(1,Math.abs(u),Math.abs(l))&&Math.abs(e-v)<=M*Math.max(1,Math.abs(e),Math.abs(v))&&Math.abs(o-b)<=M*Math.max(1,Math.abs(o),Math.abs(b))&&Math.abs(i-m)<=M*Math.max(1,Math.abs(i),Math.abs(m))&&Math.abs(h-d)<=M*Math.max(1,Math.abs(h),Math.abs(d))&&Math.abs(c-x)<=M*Math.max(1,Math.abs(c),Math.abs(x))}function $u(){var t=new f(2);return f!=Float32Array&&(t[0]=0,t[1]=0),t}function te(t){var n=new f(2);return n[0]=t[0],n[1]=t[1],n}function ne(t,n){var a=new f(2);return a[0]=t,a[1]=n,a}function ae(t,n){return t[0]=n[0],t[1]=n[1],t}function re(t,n,a){return t[0]=n,t[1]=a,t}function ue(t,n,a){return t[0]=n[0]+a[0],t[1]=n[1]+a[1],t}function ee(t,n,a){return t[0]=n[0]-a[0],t[1]=n[1]-a[1],t}function oe(t,n,a){return t[0]=n[0]*a[0],t[1]=n[1]*a[1],t}function ie(t,n,a){return t[0]=n[0]/a[0],t[1]=n[1]/a[1],t}function he(t,n){return t[0]=Math.ceil(n[0]),t[1]=Math.ceil(n[1]),t}function ce(t,n){return t[0]=Math.floor(n[0]),t[1]=Math.floor(n[1]),t}function se(t,n,a){return t[0]=Math.min(n[0],a[0]),t[1]=Math.min(n[1],a[1]),t}function Me(t,n,a){return t[0]=Math.max(n[0],a[0]),t[1]=Math.max(n[1],a[1]),t}function fe(t,n){return t[0]=Math.round(n[0]),t[1]=Math.round(n[1]),t}function le(t,n,a){return t[0]=n[0]*a,t[1]=n[1]*a,t}function ve(t,n,a,r){return t[0]=n[0]+a[0]*r,t[1]=n[1]+a[1]*r,t}function be(t,n){var a=n[0]-t[0],r=n[1]-t[1];return Math.hypot(a,r)}function me(t,n){var a=n[0]-t[0],r=n[1]-t[1];return a*a+r*r}function de(t){var n=t[0],a=t[1];return Math.hypot(n,a)}function xe(t){var n=t[0],a=t[1];return n*n+a*a}function ye(t,n){return t[0]=-n[0],t[1]=-n[1],t}function pe(t,n){return t[0]=1/n[0],t[1]=1/n[1],t}function qe(t,n){var a=n[0],r=n[1],u=a*a+r*r;return u>0&&(u=1/Math.sqrt(u)),t[0]=n[0]*u,t[1]=n[1]*u,t}function we(t,n){return t[0]*n[0]+t[1]*n[1]}function ge(t,n,a){var r=n[0]*a[1]-n[1]*a[0];return t[0]=t[1]=0,t[2]=r,t}function Ae(t,n,a,r){var u=n[0],e=n[1];return t[0]=u+r*(a[0]-u),t[1]=e+r*(a[1]-e),t}function Pe(t,n){n=n||1;var a=2*l()*Math.PI;return t[0]=Math.cos(a)*n,t[1]=Math.sin(a)*n,t}function Se(t,n,a){var r=n[0],u=n[1];return t[0]=a[0]*r+a[2]*u,t[1]=a[1]*r+a[3]*u,t}function Re(t,n,a){var r=n[0],u=n[1];return t[0]=a[0]*r+a[2]*u+a[4],t[1]=a[1]*r+a[3]*u+a[5],t}function Te(t,n,a){var r=n[0],u=n[1];return t[0]=a[0]*r+a[3]*u+a[6],t[1]=a[1]*r+a[4]*u+a[7],t}function Ie(t,n,a){var r=n[0],u=n[1];return t[0]=a[0]*r+a[4]*u+a[12],t[1]=a[1]*r+a[5]*u+a[13],t}function Ee(t,n,a,r){var u=n[0]-a[0],e=n[1]-a[1],o=Math.sin(r),i=Math.cos(r);return t[0]=u*i-e*o+a[0],t[1]=u*o+e*i+a[1],t}function De(t,n){var a=t[0],r=t[1],u=n[0],e=n[1],o=a*a+r*r;o>0&&(o=1/Math.sqrt(o));var i=u*u+e*e;i>0&&(i=1/Math.sqrt(i));var h=(a*u+r*e)*o*i;return h>1?0:h<-1?Math.PI:Math.acos(h)}function Fe(t){return t[0]=0,t[1]=0,t}function Le(t){return"vec2("+t[0]+", "+t[1]+")"}function Ve(t,n){return t[0]===n[0]&&t[1]===n[1]}function je(t,n){var a=t[0],r=t[1],u=n[0],e=n[1];return Math.abs(a-u)<=M*Math.max(1,Math.abs(a),Math.abs(u))&&Math.abs(r-e)<=M*Math.max(1,Math.abs(r),Math.abs(e))}var ze=de,Oe=ee,Qe=oe,Ye=ie,Xe=be,Ze=me,_e=xe,Be=function(){var t=$u();return function(n,a,r,u,e,o){var i,h;for(a||(a=2),r||(r=0),h=u?Math.min(u*a+r,n.length):n.length,i=r;i<h;i+=a)t[0]=n[i],t[1]=n[i+1],e(t,t,o),n[i]=t[0],n[i+1]=t[1];return n}}();window.glMatrix=n,window.mat2=a,window.mat2d=r,window.mat3=u,window.mat4=e,window.quat=h,window.quat2=c,window.vec2=s,window.vec3=o,window.vec4=i})();
 //# sourceMappingURL=libs.core.js.map
-if(!CABLES.exportedPatches)CABLES.exportedPatches={};CABLES.exportedPatches["9jwWVw"]={_id:"675d7abc278d90e8b27df433",ops:[{id:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e",uiAttribs:{},portsIn:[{name:"Mask",useVariable:"unknown"},{name:"Blend Mode index",value:0},{name:"Blend Mode",value:"normal"},{name:"Alpha Mask index",value:1},{name:"Alpha Mask",value:"On"},{name:"Amount",value:1},{name:"Color index",value:0},{name:"Color",value:"Mono"},{name:"Scale",value:2.59},{name:"Aspect",value:0},{name:"Multiply",value:1.48},{name:"Harmonics index",value:0},{name:"Harmonics",value:"1"},{name:"Offset Multiply",value:1},{name:"Offset X index",value:0},{name:"Offset X",value:"None"},{name:"Offset Y index",value:0},{name:"Offset Y",value:"None"},{name:"Offset Z index",value:1},{name:"Offset Z",value:"R"}],portsOut:[{name:"trigger",links:[{portIn:"Render",portOut:"trigger",objIn:"qo8fwc0jo",objOut:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e"},{portIn:"render",portOut:"trigger",objIn:"2ddd1rwa6",objOut:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e"}]}],objName:"Ops.Gl.ImageCompose.Noise.PerlinNoise"},{id:"d026211c-7030-44d2-b052-453de4af90c6",uiAttribs:{},portsIn:[{name:"Use viewport size",value:1},{name:"Width",value:768},{name:"Height",value:484},{name:"Filter index",value:1},{name:"Filter",value:"linear"},{name:"Wrap index",value:0},{name:"Wrap",value:"clamp to edge"},{name:"HDR",value:0},{name:"Transparent",value:0}],portsOut:[{name:"Next",links:[{portIn:"Render",portOut:"Next",objIn:"u6ggr6b3b",objOut:"d026211c-7030-44d2-b052-453de4af90c6"},{portIn:"render",portOut:"Next",objIn:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e",objOut:"d026211c-7030-44d2-b052-453de4af90c6"}]},{name:"texture_out",links:[{portIn:"Image",portOut:"texture_out",objIn:"4aade3ad-896e-4d60-bb26-2f60dee0c8fc",objOut:"d026211c-7030-44d2-b052-453de4af90c6"}]},{name:"Aspect Ratio",value:2.0153061224489797}],objName:"Ops.Gl.ImageCompose.ImageCompose_v2"},{id:"6d974f9c-edab-4fcd-b245-f57ca8fc9f67",uiAttribs:{},portsIn:[{name:"Speed",value:.4},{name:"Play",value:1},{name:"Sync to timeline",value:0}],portsOut:[{name:"Time",links:[{portIn:"X",portOut:"Time",objIn:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e",objOut:"6d974f9c-edab-4fcd-b245-f57ca8fc9f67"},{portIn:"Y",portOut:"Time",objIn:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e",objOut:"6d974f9c-edab-4fcd-b245-f57ca8fc9f67"},{portIn:"Z",portOut:"Time",objIn:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e",objOut:"6d974f9c-edab-4fcd-b245-f57ca8fc9f67"}]}],objName:"Ops.Anim.Timer_v2"},{id:"c9c65449-ecca-42cd-a57f-42afb1c5676c",uiAttribs:{},portsIn:[{name:"r",value:.891},{name:"g",value:1},{name:"b",value:1},{name:"a",value:1},{name:"colorizeTexture",value:0},{name:"Vertex Colors",value:0},{name:"Alpha Mask Source index",value:0},{name:"Alpha Mask Source",value:"Luminance"},{name:"Opacity TexCoords Transform",value:0},{name:"Discard Transparent Pixels",value:0},{name:"diffuseRepeatX",value:1},{name:"diffuseRepeatY",value:1},{name:"Tex Offset X",value:0},{name:"Tex Offset Y",value:0},{name:"Crop TexCoords",value:0},{name:"billboard",value:0}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"872bbc54-93b3-4a60-aada-b93b67b1a6c5",objOut:"c9c65449-ecca-42cd-a57f-42afb1c5676c"}]}],objName:"Ops.Gl.Shader.BasicMaterial_v3"},{id:"7c398413-80ab-423a-876c-764bf2335522",uiAttribs:{},portsOut:[{name:"trigger 0",links:[{portIn:"Exec",portOut:"trigger 0",objIn:"2b813e13-92ec-4b44-b77a-0c856686e6e9",objOut:"7c398413-80ab-423a-876c-764bf2335522"}]},{name:"trigger 1",links:[{portIn:"render",portOut:"trigger 1",objIn:"107b1749-0349-418b-9106-1965c24ceffa",objOut:"7c398413-80ab-423a-876c-764bf2335522"}]},{name:"trigger 13",links:[{portIn:"render",portOut:"trigger 13",objIn:"a7d5ac2b-9f4c-44af-a162-37acef646e50",objOut:"7c398413-80ab-423a-876c-764bf2335522"}]}],objName:"Ops.Extension.Deprecated.Sequence34"},{id:"2fc6f1a2-6ef5-430c-81d2-09bdc1a02f39",uiAttribs:{},portsIn:[{name:"use viewport size",value:1},{name:"texture width",value:790},{name:"texture height",value:392},{name:"Auto Aspect",value:0},{name:"filter index",value:1},{name:"filter",value:"linear"},{name:"Wrap index",value:1},{name:"Wrap",value:"Repeat"},{name:"MSAA index",value:2},{name:"MSAA",value:"4x"},{name:"HDR",value:0,title:"Pixelformat Float 32bit"},{name:"Depth",value:1},{name:"Clear",value:1}],portsOut:[{name:"trigger",links:[{portIn:"exe",portOut:"trigger",objIn:"7c398413-80ab-423a-876c-764bf2335522",objOut:"2fc6f1a2-6ef5-430c-81d2-09bdc1a02f39"}]},{name:"texture",links:[{portIn:"image",portOut:"texture",objIn:"8de53e69-2e50-4592-83ff-67dca024b733",objOut:"2fc6f1a2-6ef5-430c-81d2-09bdc1a02f39"}]}],objName:"Ops.Gl.RenderToTexture"},{id:"a7d5ac2b-9f4c-44af-a162-37acef646e50",uiAttribs:{},portsIn:[{name:"posZ",value:0},{name:"scale",value:1},{name:"rotX",value:0},{name:"rotY",value:0},{name:"rotZ",value:0}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"8dc6c484-9c21-4210-b30b-71f327ce9b75",objOut:"a7d5ac2b-9f4c-44af-a162-37acef646e50"}]}],objName:"Ops.Gl.Matrix.Transform"},{id:"ca52445b-1858-4655-b345-bd89b6154caf",uiAttribs:{},portsIn:[{name:"radius",value:-.17},{name:"innerRadius",value:0},{name:"segments",value:40},{name:"percent",value:1},{name:"steps",value:0},{name:"invertSteps",value:0},{name:"mapping index",value:0},{name:"mapping",value:"flat"},{name:"Spline",value:0},{name:"Draw",value:1}],objName:"Ops.Gl.Meshes.Circle"},{id:"107b1749-0349-418b-9106-1965c24ceffa",uiAttribs:{},portsIn:[{name:"Scale index",value:1},{name:"Scale",value:"Fit"},{name:"Flip Y",value:0},{name:"Flip X",value:0}],objName:"Ops.Gl.Meshes.FullscreenRectangle"},{id:"8de53e69-2e50-4592-83ff-67dca024b733",uiAttribs:{},portsIn:[{name:"amount",value:.615},{name:"blendMode index",value:0},{name:"blendMode",value:"normal"},{name:"alphaSrc index",value:0},{name:"alphaSrc",value:"alpha channel"},{name:"removeAlphaSrc",value:1},{name:"invert alpha channel",value:0},{name:"flip x",value:0},{name:"flip y",value:0},{name:"scale",value:.973},{name:"pos x",value:0},{name:"pos y",value:0},{name:"rotate",value:1}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"de9fdb58-9964-4674-8d0b-d4c3772ec6ff",objOut:"8de53e69-2e50-4592-83ff-67dca024b733"}]}],objName:"Ops.Gl.ImageCompose.DrawImage"},{id:"bc8b6d12-d8d0-44f6-aced-09ea8e07d3d8",uiAttribs:{},portsIn:[{name:"Blend Mode index",value:0},{name:"Blend Mode",value:"normal"},{name:"Amount",value:.092},{name:"Mask Invert",value:0},{name:"r",value:.3253454899787891},{name:"g",value:.0012054443359375},{name:"b",value:1}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"4b1e604b-94d9-4b8c-a835-44000ba6dbea",objOut:"bc8b6d12-d8d0-44f6-aced-09ea8e07d3d8"}]}],objName:"Ops.Gl.ImageCompose.Color"},{id:"4b1e604b-94d9-4b8c-a835-44000ba6dbea",uiAttribs:{},portsIn:[{name:"amount",value:.6},{name:"times",value:1}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"8de53e69-2e50-4592-83ff-67dca024b733",objOut:"4b1e604b-94d9-4b8c-a835-44000ba6dbea"}]}],objName:"Ops.Extension.Deprecated.Twirl"},{id:"de9fdb58-9964-4674-8d0b-d4c3772ec6ff",uiAttribs:{},portsIn:[{name:"hue",value:1}],objName:"Ops.Gl.ImageCompose.Hue"},{id:"a213a700-0a04-4c80-83a9-01968dedb7e4",uiAttribs:{},portsIn:[{name:"use viewport size",value:1},{name:"width",value:790},{name:"height",value:392},{name:"filter index",value:1},{name:"filter",value:"linear"},{name:"wrap index",value:0},{name:"wrap",value:"clamp to edge"},{name:"HDR",value:1},{name:"Background Alpha",value:0}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"bc8b6d12-d8d0-44f6-aced-09ea8e07d3d8",objOut:"a213a700-0a04-4c80-83a9-01968dedb7e4"}]},{name:"texture_out",links:[{portIn:"Texture",portOut:"texture_out",objIn:"107b1749-0349-418b-9106-1965c24ceffa",objOut:"a213a700-0a04-4c80-83a9-01968dedb7e4"},{portIn:"Image",portOut:"texture_out",objIn:"ea08f3f8-d412-44da-8a11-95ee1f3481b4",objOut:"a213a700-0a04-4c80-83a9-01968dedb7e4"}]},{name:"Aspect Ratio",value:2.0153061224489797}],objName:"Ops.Gl.ImageCompose.ImageCompose"},{id:"ade559bb-0bf1-4c52-a024-a34a66a4f277",uiAttribs:{},portsIn:[{name:"Use viewport size",value:1},{name:"Width",value:768},{name:"Height",value:484},{name:"Filter index",value:1},{name:"Filter",value:"linear"},{name:"Wrap index",value:0},{name:"Wrap",value:"clamp to edge"},{name:"HDR",value:0},{name:"Transparent",value:0}],portsOut:[{name:"Next",links:[{portIn:"render",portOut:"Next",objIn:"ea08f3f8-d412-44da-8a11-95ee1f3481b4",objOut:"ade559bb-0bf1-4c52-a024-a34a66a4f277"}]},{name:"texture_out",links:[{portIn:"displaceTex",portOut:"texture_out",objIn:"177e7264-c669-4062-8891-3ce8690b9939",objOut:"ade559bb-0bf1-4c52-a024-a34a66a4f277"}]},{name:"Aspect Ratio",value:2.0153061224489797}],objName:"Ops.Gl.ImageCompose.ImageCompose_v2"},{id:"ea08f3f8-d412-44da-8a11-95ee1f3481b4",uiAttribs:{},portsIn:[{name:"blendMode index",value:0},{name:"blendMode",value:"normal"},{name:"amount",value:1},{name:"Premultiplied",value:0},{name:"Alpha Mask",value:0},{name:"removeAlphaSrc",value:0},{name:"Mask Src index",value:0},{name:"Mask Src",value:"alpha channel"},{name:"Invert alpha channel",value:0},{name:"Aspect Ratio",value:0},{name:"Stretch Axis index",value:0},{name:"Stretch Axis",value:"X"},{name:"Position",value:0},{name:"Crop",value:0},{name:"flip x",value:0},{name:"flip y",value:0},{name:"Transform",value:0},{name:"Scale X",value:1},{name:"Scale Y",value:1},{name:"Position X",value:0},{name:"Position Y",value:0},{name:"Rotation",value:0},{name:"Clip Repeat",value:0}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"2092c84d-a652-482f-82f9-b58f8ed8969d",objOut:"ea08f3f8-d412-44da-8a11-95ee1f3481b4"}]}],objName:"Ops.Gl.ImageCompose.DrawImage_v3"},{id:"f487e7d4-3269-4d85-8975-961b9bd7bc39",uiAttribs:{},portsOut:[{name:"trigger 0",links:[{portIn:"render",portOut:"trigger 0",objIn:"2fc6f1a2-6ef5-430c-81d2-09bdc1a02f39",objOut:"f487e7d4-3269-4d85-8975-961b9bd7bc39"}]},{name:"trigger 1",links:[{portIn:"render",portOut:"trigger 1",objIn:"a213a700-0a04-4c80-83a9-01968dedb7e4",objOut:"f487e7d4-3269-4d85-8975-961b9bd7bc39"}]},{name:"trigger 2",links:[{portIn:"Render",portOut:"trigger 2",objIn:"ade559bb-0bf1-4c52-a024-a34a66a4f277",objOut:"f487e7d4-3269-4d85-8975-961b9bd7bc39"}]},{name:"trigger 3",links:[{portIn:"Render",portOut:"trigger 3",objIn:"d026211c-7030-44d2-b052-453de4af90c6",objOut:"f487e7d4-3269-4d85-8975-961b9bd7bc39"}]},{name:"trigger 5",links:[{portIn:"render",portOut:"trigger 5",objIn:"c9c65449-ecca-42cd-a57f-42afb1c5676c",objOut:"f487e7d4-3269-4d85-8975-961b9bd7bc39"}]},{name:"trigger 6",links:[{portIn:"Render",portOut:"trigger 6",objIn:"5d1eee56-9f8f-4b79-affa-000e719057f2",objOut:"f487e7d4-3269-4d85-8975-961b9bd7bc39"}]},{name:"trigger 7",links:[{portIn:"Render",portOut:"trigger 7",objIn:"68c70fc4-9146-4730-a80f-0aca79aaa38b",objOut:"f487e7d4-3269-4d85-8975-961b9bd7bc39"}]}],objName:"Ops.Trigger.Sequence"},{id:"4aade3ad-896e-4d60-bb26-2f60dee0c8fc",uiAttribs:{},portsIn:[{name:"blendMode index",value:0},{name:"blendMode",value:"normal"},{name:"amount",value:1},{name:"Premultiplied",value:0},{name:"Alpha Mask",value:0},{name:"removeAlphaSrc",value:0},{name:"Mask Src index",value:0},{name:"Mask Src",value:"alpha channel"},{name:"Invert alpha channel",value:0},{name:"Aspect Ratio",value:0},{name:"Stretch Axis index",value:0},{name:"Stretch Axis",value:"X"},{name:"Position",value:0},{name:"Crop",value:0},{name:"flip x",value:0},{name:"flip y",value:0},{name:"Transform",value:0},{name:"Scale X",value:1},{name:"Scale Y",value:1},{name:"Position X",value:0},{name:"Position Y",value:0},{name:"Rotation",value:0},{name:"Clip Repeat",value:0}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"28c78ff6-94e3-4cf2-8f97-678806ce7757",objOut:"4aade3ad-896e-4d60-bb26-2f60dee0c8fc"}]}],objName:"Ops.Gl.ImageCompose.DrawImage_v3"},{id:"5d1eee56-9f8f-4b79-affa-000e719057f2",uiAttribs:{},portsIn:[{name:"Use viewport size",value:1},{name:"Width",value:768},{name:"Height",value:484},{name:"Filter index",value:1},{name:"Filter",value:"linear"},{name:"Wrap index",value:0},{name:"Wrap",value:"clamp to edge"},{name:"HDR",value:0},{name:"Transparent",value:0}],portsOut:[{name:"Next",links:[{portIn:"render",portOut:"Next",objIn:"4aade3ad-896e-4d60-bb26-2f60dee0c8fc",objOut:"5d1eee56-9f8f-4b79-affa-000e719057f2"}]},{name:"texture_out",links:[{portIn:"Image",portOut:"texture_out",objIn:"15fcaa9e-c4da-44ff-b05f-5e9beca599fc",objOut:"5d1eee56-9f8f-4b79-affa-000e719057f2"}]},{name:"Aspect Ratio",value:2.0153061224489797}],objName:"Ops.Gl.ImageCompose.ImageCompose_v2"},{id:"15fcaa9e-c4da-44ff-b05f-5e9beca599fc",uiAttribs:{},portsIn:[{name:"blendMode index",value:0},{name:"blendMode",value:"normal"},{name:"amount",value:1},{name:"Premultiplied",value:0},{name:"Alpha Mask",value:0},{name:"removeAlphaSrc",value:0},{name:"Mask Src index",value:0},{name:"Mask Src",value:"alpha channel"},{name:"Invert alpha channel",value:0},{name:"Aspect Ratio",value:0},{name:"Stretch Axis index",value:0},{name:"Stretch Axis",value:"X"},{name:"Position",value:0},{name:"Crop",value:0},{name:"flip x",value:0},{name:"flip y",value:0},{name:"Transform",value:0},{name:"Scale X",value:1},{name:"Scale Y",value:1},{name:"Position X",value:0},{name:"Position Y",value:0},{name:"Rotation",value:0},{name:"Clip Repeat",value:0}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"177e7264-c669-4062-8891-3ce8690b9939",objOut:"15fcaa9e-c4da-44ff-b05f-5e9beca599fc"}]}],objName:"Ops.Gl.ImageCompose.DrawImage_v3"},{id:"68c70fc4-9146-4730-a80f-0aca79aaa38b",uiAttribs:{},portsIn:[{name:"Use viewport size",value:1},{name:"Width",value:768},{name:"Height",value:484},{name:"Filter index",value:1},{name:"Filter",value:"linear"},{name:"Wrap index",value:0},{name:"Wrap",value:"clamp to edge"},{name:"HDR",value:0},{name:"Transparent",value:0}],portsOut:[{name:"Next",links:[{portIn:"render",portOut:"Next",objIn:"15fcaa9e-c4da-44ff-b05f-5e9beca599fc",objOut:"68c70fc4-9146-4730-a80f-0aca79aaa38b"}]},{name:"texture_out",links:[{portIn:"texture",portOut:"texture_out",objIn:"c9c65449-ecca-42cd-a57f-42afb1c5676c",objOut:"68c70fc4-9146-4730-a80f-0aca79aaa38b"}]},{name:"Aspect Ratio",value:2.0153061224489797}],objName:"Ops.Gl.ImageCompose.ImageCompose_v2"},{id:"872bbc54-93b3-4a60-aada-b93b67b1a6c5",uiAttribs:{},portsIn:[{name:"Scale index",value:1},{name:"Scale",value:"Fit"},{name:"Flip Y",value:0},{name:"Flip X",value:0}],objName:"Ops.Gl.Meshes.FullscreenRectangle"},{id:"f88ac742-9a62-4a46-8878-a2a97ff0d61f",uiAttribs:{},portsIn:[{name:"FPS Limit",value:0},{name:"Reduce FPS not focussed",value:1},{name:"Reduce FPS loading",value:0},{name:"Clear",value:1},{name:"ClearAlpha",value:1},{name:"Fullscreen Button",value:0},{name:"Active",value:1},{name:"Hires Displays",value:0},{name:"Pixel Unit index",value:0},{name:"Pixel Unit",value:"Display"}],portsOut:[{name:"trigger",links:[{portIn:"exe",portOut:"trigger",objIn:"f487e7d4-3269-4d85-8975-961b9bd7bc39",objOut:"f88ac742-9a62-4a46-8878-a2a97ff0d61f"}]},{name:"width",value:790},{name:"height",value:392}],objName:"Ops.Gl.MainLoop"},{id:"2092c84d-a652-482f-82f9-b58f8ed8969d",uiAttribs:{},portsIn:[{name:"amount",value:1.07},{name:"Clamp",value:0},{name:"Mask Invert",value:0},{name:"direction index",value:0},{name:"direction",value:"both"}],objName:"Ops.Gl.ImageCompose.FastBlur"},{id:"b9af156d-86c9-4179-8561-604bdaea6b88",uiAttribs:{},portsIn:[{name:"Active",value:1},{name:"relative",value:0},{name:"normalize",value:0},{name:"flip y",value:0},{name:"Area index",value:0},{name:"Area",value:"Canvas"},{name:"right click prevent default",value:1},{name:"Touch support",value:1},{name:"smooth",value:0},{name:"smoothSpeed",value:200},{name:"multiply",value:1}],portsOut:[{name:"x",links:[{portIn:"X",portOut:"x",objIn:"2b813e13-92ec-4b44-b77a-0c856686e6e9",objOut:"b9af156d-86c9-4179-8561-604bdaea6b88"}]},{name:"y",links:[{portIn:"Y",portOut:"y",objIn:"2b813e13-92ec-4b44-b77a-0c856686e6e9",objOut:"b9af156d-86c9-4179-8561-604bdaea6b88"}]},{name:"button down",value:0},{name:"mouseOver",value:0},{name:"button",value:0}],objName:"Ops.Devices.Mouse.Mouse_v2"},{id:"2b813e13-92ec-4b44-b77a-0c856686e6e9",uiAttribs:{},portsIn:[{name:"Input Type index",value:0},{name:"Input Type",value:"Pixel"}],portsOut:[{name:"Result X",links:[{portIn:"posX",portOut:"Result X",objIn:"a7d5ac2b-9f4c-44af-a162-37acef646e50",objOut:"2b813e13-92ec-4b44-b77a-0c856686e6e9"}]},{name:"Result Y",links:[{portIn:"posY",portOut:"Result Y",objIn:"a7d5ac2b-9f4c-44af-a162-37acef646e50",objOut:"2b813e13-92ec-4b44-b77a-0c856686e6e9"}]}],objName:"Ops.Gl.Matrix.ScreenPosTo3d_v3"},{id:"177e7264-c669-4062-8891-3ce8690b9939",uiAttribs:{},portsIn:[{name:"Blend Mode index",value:0},{name:"Blend Mode",value:"normal"},{name:"Amount",value:1},{name:"amount X",value:1},{name:"amount Y",value:1},{name:"Wrap index",value:0},{name:"Wrap",value:"Mirror"},{name:"Input index",value:0},{name:"Input",value:"Luminance"},{name:"Zero Displace index",value:1},{name:"Zero Displace",value:"Black"}],objName:"Ops.Gl.ImageCompose.PixelDisplacement_v3"},{id:"q8hok0i30",uiAttribs:{},portsIn:[{name:"File",value:"assets/674da67dbc505b21cb1fe05e_hilly_terrain_01_puresky_4k_11zon.jpg",display:"file"},{name:"Filter index",value:2},{name:"Filter",value:"mipmap"},{name:"Wrap index",value:0},{name:"Wrap",value:"repeat"},{name:"Anisotropic index",value:5},{name:"Anisotropic",value:"16"},{name:"Data Format index",value:3},{name:"Data Format",value:"RGBA"},{name:"Flip",value:0},{name:"Pre Multiplied Alpha",value:0},{name:"Active",value:1},{name:"Save Memory",value:1},{name:"Add Cachebuster",value:0}],portsOut:[{name:"Texture",links:[{portIn:"Texture In",portOut:"Texture",objIn:"q2pib4x9p",objOut:"q8hok0i30"},{portIn:"Mask",portOut:"Texture",objIn:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e",objOut:"q8hok0i30"}]},{name:"Width",value:1599},{name:"Height",value:799},{name:"Aspect Ratio",value:2.0012515644555693},{name:"Loaded",value:1},{name:"Loading",value:0}],objName:"Ops.Gl.Texture_v2"},{id:"q2pib4x9p",uiAttribs:{},portsIn:[{name:"Show Info",value:0},{name:"Visualize outside 0-1 index",value:1},{name:"Visualize outside 0-1",value:"Anim"},{name:"Alpha index",value:0},{name:"Alpha",value:"A"},{name:"Show Color",value:0},{name:"X",value:.5},{name:"Y",value:.5}],portsOut:[{name:"Info",value:""}],objName:"Ops.Ui.VizTexture"},{id:"u6ggr6b3b",uiAttribs:{},portsIn:[{name:"Blend Mode index",value:0},{name:"Blend Mode",value:"normal"},{name:"Amount",value:1},{name:"Strength",value:2.43},{name:"Width",value:.942},{name:"Mul Color",value:.599}],objName:"Ops.Gl.ImageCompose.EdgeDetection_v4"},{id:"qo8fwc0jo",uiAttribs:{},portsIn:[{name:"In Min",value:0},{name:"Midpoint",value:0},{name:"In Max",value:1},{name:"Out Min",value:.176},{name:"Out Max",value:1}],objName:"Ops.Gl.ImageCompose.Levels_v2"},{id:"2ddd1rwa6",uiAttribs:{},portsIn:[{name:"hue",value:0}],objName:"Ops.Gl.ImageCompose.Hue"},{id:"28c78ff6-94e3-4cf2-8f97-678806ce7757",uiAttribs:{},portsIn:[{name:"Blend Mode index",value:0},{name:"Blend Mode",value:"normal"},{name:"Amount",value:1},{name:"amount X",value:.74},{name:"amount Y",value:.711},{name:"Wrap index",value:0},{name:"Wrap",value:"Mirror"},{name:"Input index",value:0},{name:"Input",value:"Luminance"},{name:"Zero Displace index",value:1},{name:"Zero Displace",value:"Black"}],objName:"Ops.Gl.ImageCompose.PixelDisplacement_v3"},{id:"8dc6c484-9c21-4210-b30b-71f327ce9b75",uiAttribs:{},portsIn:[{name:"r",value:1},{name:"g",value:1},{name:"b",value:1},{name:"a",value:1},{name:"colorizeTexture",value:0},{name:"Vertex Colors",value:0},{name:"Alpha Mask Source index",value:0},{name:"Alpha Mask Source",value:"Luminance"},{name:"Opacity TexCoords Transform",value:0},{name:"Discard Transparent Pixels",value:0},{name:"diffuseRepeatX",value:1},{name:"diffuseRepeatY",value:1},{name:"Tex Offset X",value:0},{name:"Tex Offset Y",value:0},{name:"Crop TexCoords",value:0},{name:"billboard",value:0}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"ca52445b-1858-4655-b345-bd89b6154caf",objOut:"8dc6c484-9c21-4210-b30b-71f327ce9b75"}]}],objName:"Ops.Gl.Shader.BasicMaterial_v3"},{id:"7thy99doz",uiAttribs:{},portsIn:[{name:"Red",value:1},{name:"Green",value:1},{name:"Blue",value:1},{name:"Alpha",value:1}],objName:"Ops.Gl.ColorMask"}],export:{time:"2024-12-14 13:32",service:"html",exportNumber:1}};if(!CABLES.exportedPatch){CABLES.exportedPatch=CABLES.exportedPatches["9jwWVw"]}"use strict";var CABLES=CABLES||{};CABLES.OPS=CABLES.OPS||{};var Ops=Ops||{};Ops.Gl=Ops.Gl||{};Ops.Ui=Ops.Ui||{};Ops.Anim=Ops.Anim||{};Ops.Devices=Ops.Devices||{};Ops.Trigger=Ops.Trigger||{};Ops.Extension=Ops.Extension||{};Ops.Gl.Matrix=Ops.Gl.Matrix||{};Ops.Gl.Meshes=Ops.Gl.Meshes||{};Ops.Gl.Shader=Ops.Gl.Shader||{};Ops.Devices.Mouse=Ops.Devices.Mouse||{};Ops.Gl.ImageCompose=Ops.Gl.ImageCompose||{};Ops.Extension.Deprecated=Ops.Extension.Deprecated||{};Ops.Gl.ImageCompose.Noise=Ops.Gl.ImageCompose.Noise||{};Ops.Gl.ImageCompose.Noise.PerlinNoise=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={perlinnoise3d_frag:'UNI float z;\nUNI float x;\nUNI float y;\nUNI float scale;\nUNI float rangeMul;\nUNI float harmonics;\nUNI float aspect;\n\nIN vec2 texCoord;\nUNI sampler2D tex;\n\n#ifdef HAS_TEX_OFFSETMAP\n    UNI sampler2D texOffsetZ;\n    UNI float offMul;\n#endif\n\n#ifdef HAS_TEX_MASK\n    UNI sampler2D texMask;\n#endif\n\nUNI float amount;\n\n{{CGL.BLENDMODES}}\n\n\nfloat Interpolation_C2( float x ) { return x * x * x * (x * (x * 6.0 - 15.0) + 10.0); }   //  6x^5-15x^4+10x^3\t( Quintic Curve.  As used by Perlin in Improved Noise.  http://mrl.nyu.edu/~perlin/paper445.pdf )\nvec2 Interpolation_C2( vec2 x ) { return x * x * x * (x * (x * 6.0 - 15.0) + 10.0); }\nvec3 Interpolation_C2( vec3 x ) { return x * x * x * (x * (x * 6.0 - 15.0) + 10.0); }\nvec4 Interpolation_C2( vec4 x ) { return x * x * x * (x * (x * 6.0 - 15.0) + 10.0); }\nvec4 Interpolation_C2_InterpAndDeriv( vec2 x ) { return x.xyxy * x.xyxy * ( x.xyxy * ( x.xyxy * ( x.xyxy * vec2( 6.0, 0.0 ).xxyy + vec2( -15.0, 30.0 ).xxyy ) + vec2( 10.0, -60.0 ).xxyy ) + vec2( 0.0, 30.0 ).xxyy ); }\nvec3 Interpolation_C2_Deriv( vec3 x ) { return x * x * (x * (x * 30.0 - 60.0) + 30.0); }\n\n\nvoid FAST32_hash_3D( vec3 gridcell, out vec4 lowz_hash, out vec4 highz_hash )\t//\tgenerates a random number for each of the 8 cell corners\n{\n    //    gridcell is assumed to be an integer coordinate\n\n    //\tTODO: \tthese constants need tweaked to find the best possible noise.\n    //\t\t\tprobably requires some kind of brute force computational searching or something....\n    const vec2 OFFSET = vec2( 50.0, 161.0 );\n    const float DOMAIN = 69.0;\n    const float SOMELARGEFLOAT = 635.298681;\n    const float ZINC = 48.500388;\n\n    //\ttruncate the domain\n    gridcell.xyz = gridcell.xyz - floor(gridcell.xyz * ( 1.0 / DOMAIN )) * DOMAIN;\n    vec3 gridcell_inc1 = step( gridcell, vec3( DOMAIN - 1.5 ) ) * ( gridcell + 1.0 );\n\n    //\tcalculate the noise\n    vec4 P = vec4( gridcell.xy, gridcell_inc1.xy ) + OFFSET.xyxy;\n    P *= P;\n    P = P.xzxz * P.yyww;\n    highz_hash.xy = vec2( 1.0 / ( SOMELARGEFLOAT + vec2( gridcell.z, gridcell_inc1.z ) * ZINC ) );\n    lowz_hash = fract( P * highz_hash.xxxx );\n    highz_hash = fract( P * highz_hash.yyyy );\n}\n\n\n\n\nvoid FAST32_hash_3D( \tvec3 gridcell,\n                        out vec4 lowz_hash_0,\n                        out vec4 lowz_hash_1,\n                        out vec4 lowz_hash_2,\n                        out vec4 highz_hash_0,\n                        out vec4 highz_hash_1,\n                        out vec4 highz_hash_2\t)\t\t//\tgenerates 3 random numbers for each of the 8 cell corners\n{\n    //    gridcell is assumed to be an integer coordinate\n\n    //\tTODO: \tthese constants need tweaked to find the best possible noise.\n    //\t\t\tprobably requires some kind of brute force computational searching or something....\n    const vec2 OFFSET = vec2( 50.0, 161.0 );\n    const float DOMAIN = 69.0;\n    const vec3 SOMELARGEFLOATS = vec3( 635.298681, 682.357502, 668.926525 );\n    const vec3 ZINC = vec3( 48.500388, 65.294118, 63.934599 );\n\n    //\ttruncate the domain\n    gridcell.xyz = gridcell.xyz - floor(gridcell.xyz * ( 1.0 / DOMAIN )) * DOMAIN;\n    vec3 gridcell_inc1 = step( gridcell, vec3( DOMAIN - 1.5 ) ) * ( gridcell + 1.0 );\n\n    //\tcalculate the noise\n    vec4 P = vec4( gridcell.xy, gridcell_inc1.xy ) + OFFSET.xyxy;\n    P *= P;\n    P = P.xzxz * P.yyww;\n    vec3 lowz_mod = vec3( 1.0 / ( SOMELARGEFLOATS.xyz + gridcell.zzz * ZINC.xyz ) );\n    vec3 highz_mod = vec3( 1.0 / ( SOMELARGEFLOATS.xyz + gridcell_inc1.zzz * ZINC.xyz ) );\n    lowz_hash_0 = fract( P * lowz_mod.xxxx );\n    highz_hash_0 = fract( P * highz_mod.xxxx );\n    lowz_hash_1 = fract( P * lowz_mod.yyyy );\n    highz_hash_1 = fract( P * highz_mod.yyyy );\n    lowz_hash_2 = fract( P * lowz_mod.zzzz );\n    highz_hash_2 = fract( P * highz_mod.zzzz );\n}\nfloat Falloff_Xsq_C1( float xsq ) { xsq = 1.0 - xsq; return xsq*xsq; }\t// ( 1.0 - x*x )^2   ( Used by Humus for lighting falloff in Just Cause 2.  GPUPro 1 )\nfloat Falloff_Xsq_C2( float xsq ) { xsq = 1.0 - xsq; return xsq*xsq*xsq; }\t// ( 1.0 - x*x )^3.   NOTE: 2nd derivative is 0.0 at x=1.0, but non-zero at x=0.0\nvec4 Falloff_Xsq_C2( vec4 xsq ) { xsq = 1.0 - xsq; return xsq*xsq*xsq; }\n\n\n//\n//\tPerlin Noise 3D  ( gradient noise )\n//\tReturn value range of -1.0->1.0\n//\thttp://briansharpe.files.wordpress.com/2011/11/perlinsample.jpg\n//\nfloat Perlin3D( vec3 P )\n{\n    //\testablish our grid cell and unit position\n    vec3 Pi = floor(P);\n    vec3 Pf = P - Pi;\n    vec3 Pf_min1 = Pf - 1.0;\n\n#if 1\n    //\n    //\tclassic noise.\n    //\trequires 3 random values per point.  with an efficent hash function will run faster than improved noise\n    //\n\n    //\tcalculate the hash.\n    //\t( various hashing methods listed in order of speed )\n    vec4 hashx0, hashy0, hashz0, hashx1, hashy1, hashz1;\n    FAST32_hash_3D( Pi, hashx0, hashy0, hashz0, hashx1, hashy1, hashz1 );\n    //SGPP_hash_3D( Pi, hashx0, hashy0, hashz0, hashx1, hashy1, hashz1 );\n\n    //\tcalculate the gradients\n    vec4 grad_x0 = hashx0 - 0.49999;\n    vec4 grad_y0 = hashy0 - 0.49999;\n    vec4 grad_z0 = hashz0 - 0.49999;\n    vec4 grad_x1 = hashx1 - 0.49999;\n    vec4 grad_y1 = hashy1 - 0.49999;\n    vec4 grad_z1 = hashz1 - 0.49999;\n    vec4 grad_results_0 = inversesqrt( grad_x0 * grad_x0 + grad_y0 * grad_y0 + grad_z0 * grad_z0 ) * ( vec2( Pf.x, Pf_min1.x ).xyxy * grad_x0 + vec2( Pf.y, Pf_min1.y ).xxyy * grad_y0 + Pf.zzzz * grad_z0 );\n    vec4 grad_results_1 = inversesqrt( grad_x1 * grad_x1 + grad_y1 * grad_y1 + grad_z1 * grad_z1 ) * ( vec2( Pf.x, Pf_min1.x ).xyxy * grad_x1 + vec2( Pf.y, Pf_min1.y ).xxyy * grad_y1 + Pf_min1.zzzz * grad_z1 );\n\n#if 1\n    //\tClassic Perlin Interpolation\n    vec3 blend = Interpolation_C2( Pf );\n    vec4 res0 = mix( grad_results_0, grad_results_1, blend.z );\n    vec4 blend2 = vec4( blend.xy, vec2( 1.0 - blend.xy ) );\n    float final = dot( res0, blend2.zxzx * blend2.wwyy );\n    final *= 1.1547005383792515290182975610039;\t\t//\t(optionally) scale things to a strict -1.0->1.0 range    *= 1.0/sqrt(0.75)\n    return final;\n#else\n    //\tClassic Perlin Surflet\n    //\thttp://briansharpe.wordpress.com/2012/03/09/modifications-to-classic-perlin-noise/\n    Pf *= Pf;\n    Pf_min1 *= Pf_min1;\n    vec4 vecs_len_sq = vec4( Pf.x, Pf_min1.x, Pf.x, Pf_min1.x ) + vec4( Pf.yy, Pf_min1.yy );\n    float final = dot( Falloff_Xsq_C2( min( vec4( 1.0 ), vecs_len_sq + Pf.zzzz ) ), grad_results_0 ) + dot( Falloff_Xsq_C2( min( vec4( 1.0 ), vecs_len_sq + Pf_min1.zzzz ) ), grad_results_1 );\n    final *= 2.3703703703703703703703703703704;\t\t//\t(optionally) scale things to a strict -1.0->1.0 range    *= 1.0/cube(0.75)\n    return final;\n#endif\n\n#else\n    //\n    //\timproved noise.\n    //\trequires 1 random value per point.  Will run faster than classic noise if a slow hashing function is used\n    //\n\n    //\tcalculate the hash.\n    //\t( various hashing methods listed in order of speed )\n    vec4 hash_lowz, hash_highz;\n    FAST32_hash_3D( Pi, hash_lowz, hash_highz );\n    //BBS_hash_3D( Pi, hash_lowz, hash_highz );\n    //SGPP_hash_3D( Pi, hash_lowz, hash_highz );\n\n    //\n    //\t"improved" noise using 8 corner gradients.  Faster than the 12 mid-edge point method.\n    //\tKen mentions using diagonals like this can cause "clumping", but we\'ll live with that.\n    //\t[1,1,1]  [-1,1,1]  [1,-1,1]  [-1,-1,1]\n    //\t[1,1,-1] [-1,1,-1] [1,-1,-1] [-1,-1,-1]\n    //\n    hash_lowz -= 0.5;\n    vec4 grad_results_0_0 = vec2( Pf.x, Pf_min1.x ).xyxy * sign( hash_lowz );\n    hash_lowz = abs( hash_lowz ) - 0.25;\n    vec4 grad_results_0_1 = vec2( Pf.y, Pf_min1.y ).xxyy * sign( hash_lowz );\n    vec4 grad_results_0_2 = Pf.zzzz * sign( abs( hash_lowz ) - 0.125 );\n    vec4 grad_results_0 = grad_results_0_0 + grad_results_0_1 + grad_results_0_2;\n\n    hash_highz -= 0.5;\n    vec4 grad_results_1_0 = vec2( Pf.x, Pf_min1.x ).xyxy * sign( hash_highz );\n    hash_highz = abs( hash_highz ) - 0.25;\n    vec4 grad_results_1_1 = vec2( Pf.y, Pf_min1.y ).xxyy * sign( hash_highz );\n    vec4 grad_results_1_2 = Pf_min1.zzzz * sign( abs( hash_highz ) - 0.125 );\n    vec4 grad_results_1 = grad_results_1_0 + grad_results_1_1 + grad_results_1_2;\n\n    //\tblend the gradients and return\n    vec3 blend = Interpolation_C2( Pf );\n    vec4 res0 = mix( grad_results_0, grad_results_1, blend.z );\n    vec4 blend2 = vec4( blend.xy, vec2( 1.0 - blend.xy ) );\n    return dot( res0, blend2.zxzx * blend2.wwyy ) * (2.0 / 3.0);\t//\t(optionally) mult by (2.0/3.0) to scale to a strict -1.0->1.0 range\n#endif\n}\n\nvoid main()\n{\n    vec4 base=texture(tex,texCoord);\n    vec2 p=vec2(texCoord.x-0.5,texCoord.y-0.5);\n\n    p=p*scale;\n    p=vec2(p.x+0.5-x,p.y+0.5-y);\n\n\n\n    vec3 offset;\n    #ifdef HAS_TEX_OFFSETMAP\n        vec4 offMap=texture(texOffsetZ,texCoord);\n\n        #ifdef OFFSET_X_R\n            offset.x=offMap.r;\n        #endif\n        #ifdef OFFSET_X_G\n            offset.x=offMap.g;\n        #endif\n        #ifdef OFFSET_X_B\n            offset.x=offMap.b;\n        #endif\n\n        #ifdef OFFSET_Y_R\n            offset.y=offMap.r;\n        #endif\n        #ifdef OFFSET_Y_G\n            offset.y=offMap.g;\n        #endif\n        #ifdef OFFSET_Y_B\n            offset.y=offMap.b;\n        #endif\n\n        #ifdef OFFSET_Z_R\n            offset.z=offMap.r;\n        #endif\n        #ifdef OFFSET_Z_G\n            offset.z=offMap.g;\n        #endif\n        #ifdef OFFSET_Z_B\n            offset.z=offMap.b;\n        #endif\n        offset*=offMul;\n    #endif\n\n\n\n    float aa=texture(tex,texCoord).r;\n    // float v=(Perlin3D(vec3(p.x,p.y,z)+offset));\n\n\n    float v = 0.0;\n    p.x*=aspect;\n\n    v+=Perlin3D(vec3(p.x,p.y,z)+offset);\n\n    if (harmonics >= 2.0) v += Perlin3D(vec3(p.x,p.y,z)*2.2+offset) * 0.5;\n    if (harmonics >= 3.0) v += Perlin3D(vec3(p.x,p.y,z)*4.3+offset) * 0.25;\n    if (harmonics >= 4.0) v += Perlin3D(vec3(p.x,p.y,z)*8.4+offset) * 0.125;\n    if (harmonics >= 5.0) v += Perlin3D(vec3(p.x,p.y,z)*16.5+offset) * 0.0625;\n\n\n    v*=rangeMul;\n    v=v*0.5+0.5;\n    float v2=v;\n    float v3=v;\n\n    #ifdef RGB\n        v2=Perlin3D(vec3(p.x*2.0,p.y*2.0,z))*0.5+0.5;\n        v3=Perlin3D(vec3(p.x*3.0,p.y*3.0,z))*0.5+0.5;\n    #endif\n\n    vec4 col=vec4(v,v2,v3,1.0);\n\n    float str=1.0;\n    #ifdef HAS_TEX_MASK\n        str=texture(texMask,texCoord).r;\n    #endif\n\n    col=cgl_blend(base,col,amount*str);\n\n\n    #ifdef NO_CHANNEL_R\n        col.r=base.r;\n    #endif\n    #ifdef NO_CHANNEL_G\n        col.g=base.g;\n    #endif\n    #ifdef NO_CHANNEL_B\n        col.b=base.b;\n    #endif\n\n\n\n    outColor=col;\n}\n'};const n=e.inTrigger("render"),a=e.inTexture("Mask"),o=CGL.TextureEffect.AddBlendSelect(e),r=CGL.TextureEffect.AddBlendAlphaMask(e),i=e.inValueSlider("Amount",1),l=e.inSwitch("Color",["Mono","RGB","R","G","B"],"Mono"),s=e.inValue("Scale",22),c=e.inBool("Aspect",false),f=e.inValue("Multiply",1),u=e.inSwitch("Harmonics",["1","2","3","4","5"],"1"),d=e.inValue("X",0),g=e.inValue("Y",0),p=e.inValue("Z",0),m=e.outTrigger("trigger");const x=e.patch.cgl;const h=new CGL.Shader(x,"perlinnoise");e.setPortGroup("Position",[d,g,p]);h.setSource(h.getDefaultVertexShader(),t.perlinnoise3d_frag);const v=new CGL.Uniform(h,"t","tex",0),C=new CGL.Uniform(h,"t","texOffsetZ",1),T=new CGL.Uniform(h,"t","texMask",2),b=new CGL.Uniform(h,"f","z",p),A=new CGL.Uniform(h,"f","x",d),_=new CGL.Uniform(h,"f","y",g),E=new CGL.Uniform(h,"f","scale",s),S=new CGL.Uniform(h,"f","amount",i),O=new CGL.Uniform(h,"f","rangeMul",f);CGL.TextureEffect.setupBlending(e,h,o,i,r);const L=e.inTexture("Offset"),I=e.inFloat("Offset Multiply",1),P=e.inSwitch("Offset X",["None","R","G","B"],"None"),M=e.inSwitch("Offset Y",["None","R","G","B"],"None"),R=e.inSwitch("Offset Z",["None","R","G","B"],"R");e.setPortGroup("Offset Map",[L,R,M,P,I]);const N=new CGL.Uniform(h,"f","offMul",I);const G=new CGL.Uniform(h,"f","aspect",1);const y=new CGL.Uniform(h,"f","harmonics",0);u.onChange=()=>{y.setValue(parseFloat(u.get()))};P.onChange=M.onChange=R.onChange=a.onChange=l.onChange=L.onChange=U;U();function U(){h.toggleDefine("NO_CHANNEL_R",l.get()=="G"||l.get()=="B");h.toggleDefine("NO_CHANNEL_G",l.get()=="R"||l.get()=="B");h.toggleDefine("NO_CHANNEL_B",l.get()=="R"||l.get()=="G");h.toggleDefine("HAS_TEX_OFFSETMAP",L.get());h.toggleDefine("HAS_TEX_MASK",a.get());h.toggleDefine("OFFSET_X_R",P.get()=="R");h.toggleDefine("OFFSET_X_G",P.get()=="G");h.toggleDefine("OFFSET_X_B",P.get()=="B");h.toggleDefine("OFFSET_Y_R",M.get()=="R");h.toggleDefine("OFFSET_Y_G",M.get()=="G");h.toggleDefine("OFFSET_Y_B",M.get()=="B");h.toggleDefine("OFFSET_Z_R",R.get()=="R");h.toggleDefine("OFFSET_Z_G",R.get()=="G");h.toggleDefine("OFFSET_Z_B",R.get()=="B");P.setUiAttribs({greyout:!L.isLinked()});M.setUiAttribs({greyout:!L.isLinked()});R.setUiAttribs({greyout:!L.isLinked()});I.setUiAttribs({greyout:!L.isLinked()});h.toggleDefine("RGB",l.get()=="RGB")}n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(e))return;x.pushShader(h);x.currentTextureEffect.bind();if(c.get())G.setValue(x.currentTextureEffect.getWidth()/x.currentTextureEffect.getHeight());else G.setValue(1);x.setTexture(0,x.currentTextureEffect.getCurrentSourceTexture().tex);if(L.get())x.setTexture(1,L.get().tex);if(a.get())x.setTexture(2,a.get().tex);x.currentTextureEffect.finish();x.popShader();m.trigger()}};Ops.Gl.ImageCompose.Noise.PerlinNoise.prototype=new CABLES.Op;CABLES.OPS["446442ba-1a7e-4c71-bb43-b12005aa6511"]={f:Ops.Gl.ImageCompose.Noise.PerlinNoise,objName:"Ops.Gl.ImageCompose.Noise.PerlinNoise"};Ops.Gl.ImageCompose.ImageCompose_v2=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={imgcomp_frag:"UNI float a;\nvoid main()\n{\n   outColor= vec4(0.0,0.0,0.0,a);\n}\n"};const n=e.inTrigger("Render"),a=e.inBool("Use viewport size",true),o=e.inValueInt("Width",640),r=e.inValueInt("Height",480),i=e.inSwitch("Filter",["nearest","linear","mipmap"],"linear"),l=e.inValueSelect("Wrap",["clamp to edge","repeat","mirrored repeat"],"repeat"),s=e.inValueBool("HDR"),c=e.inValueBool("Transparent",false),f=e.outTrigger("Next"),u=e.outTexture("texture_out"),d=e.outValue("Aspect Ratio");const g=e.patch.cgl;e.setPortGroup("Texture Size",[a,o,r]);e.setPortGroup("Texture Settings",[l,i,s,c]);u.set(CGL.Texture.getEmptyTexture(g,s.get()));let p=null;let m=null;let x=8,h=8;const v=[0,0,0,0];let C=true;let T=CGL.Texture.FILTER_LINEAR;let b=CGL.Texture.WRAP_CLAMP_TO_EDGE;const A=0;const _=0;l.onChange=I;i.onChange=P;n.onTriggered=e.preRender=L;P();I();O();function E(){if(p)p.delete();if(m)m.delete();if(s.get()&&i.get()=="mipmap")e.setUiError("fpmipmap","Don't use mipmap and HDR at the same time, many systems do not support this.");else e.setUiError("fpmipmap",null);p=new CGL.TextureEffect(g,{isFloatingPointTexture:s.get()});m=new CGL.Texture(g,{name:"image_compose_v2_"+e.id,isFloatingPointTexture:s.get(),filter:T,wrap:b,width:Math.ceil(o.get()),height:Math.ceil(r.get())});p.setSourceTexture(m);u.set(CGL.Texture.getEmptyTexture(g,s.get()));C=false}s.onChange=function(){C=true};function S(){if(!p)E();if(a.get()){x=g.getViewPort()[2];h=g.getViewPort()[3]}else{x=Math.ceil(o.get());h=Math.ceil(r.get())}d.set(x/h);if((x!=m.width||h!=m.height)&&(x!==0&&h!==0)){m.setSize(x,h);p.setSourceTexture(m);u.set(CGL.Texture.getEmptyTexture(g,s.get()));u.set(m)}}function O(){o.setUiAttribs({greyout:a.get()});r.setUiAttribs({greyout:a.get()})}a.onChange=function(){O()};e.preRender=function(){L()};function L(){if(!p||C)E();const e=g.getViewPort();v[0]=e[0];v[1]=e[1];v[2]=e[2];v[3]=e[3];g.pushBlend(false);S();const t=g.currentTextureEffect;g.currentTextureEffect=p;g.currentTextureEffect.width=o.get();g.currentTextureEffect.height=r.get();p.setSourceTexture(m);let n=CGL.Texture.getBlackTexture(g);if(c.get())n=CGL.Texture.getEmptyTexture(g,s.get());p.startEffect(n);f.trigger();u.set(p.getCurrentSourceTexture());p.endEffect();g.setViewPort(v[0],v[1],v[2],v[3]);g.popBlend(false);g.currentTextureEffect=t}function I(){if(l.get()=="repeat")b=CGL.Texture.WRAP_REPEAT;if(l.get()=="mirrored repeat")b=CGL.Texture.WRAP_MIRRORED_REPEAT;if(l.get()=="clamp to edge")b=CGL.Texture.WRAP_CLAMP_TO_EDGE;C=true}function P(){if(i.get()=="nearest")T=CGL.Texture.FILTER_NEAREST;if(i.get()=="linear")T=CGL.Texture.FILTER_LINEAR;if(i.get()=="mipmap")T=CGL.Texture.FILTER_MIPMAP;C=true}};Ops.Gl.ImageCompose.ImageCompose_v2.prototype=new CABLES.Op;CABLES.OPS["a5b43d4c-a9ea-4eaf-9ed0-f257d222659d"]={f:Ops.Gl.ImageCompose.ImageCompose_v2,objName:"Ops.Gl.ImageCompose.ImageCompose_v2"};Ops.Anim.Timer_v2=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={};const r=e.inValue("Speed",1),n=e.inValueBool("Play",true),a=e.inTriggerButton("Reset"),o=e.inValueBool("Sync to timeline",false),i=e.outNumber("Time");e.setPortGroup("Controls",[n,a,r]);const l=new CABLES.Timer;let s=null;let c=0;let f=false;n.onChange=u;u();function u(){if(n.get()){l.play();e.patch.addOnAnimFrame(e)}else{l.pause();e.patch.removeOnAnimFrame(e)}}a.onTriggered=d;function d(){c=0;s=null;l.setTime(0);i.set(0)}o.onChange=function(){f=o.get();n.setUiAttribs({greyout:f});a.setUiAttribs({greyout:f})};e.onAnimFrame=function(e,t,n){if(l.isPlaying()){if(CABLES.overwriteTime!==undefined){i.set(CABLES.overwriteTime*r.get())}else if(f){i.set(e*r.get())}else{l.update();const a=l.get();if(s===null){s=a;return}const o=Math.abs(a-s);s=a;c+=o*r.get();if(c!=c)c=0;i.set(c)}}}};Ops.Anim.Timer_v2.prototype=new CABLES.Op;CABLES.OPS["aac7f721-208f-411a-adb3-79adae2e471a"]={f:Ops.Anim.Timer_v2,objName:"Ops.Anim.Timer_v2"};Ops.Gl.Shader.BasicMaterial_v3=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={basicmaterial_frag:"{{MODULES_HEAD}}\n\nIN vec2 texCoord;\n\n#ifdef VERTEX_COLORS\nIN vec4 vertCol;\n#endif\n\n#ifdef HAS_TEXTURES\n    IN vec2 texCoordOrig;\n    #ifdef HAS_TEXTURE_DIFFUSE\n        UNI sampler2D tex;\n    #endif\n    #ifdef HAS_TEXTURE_OPACITY\n        UNI sampler2D texOpacity;\n   #endif\n#endif\n\n\n\nvoid main()\n{\n    {{MODULE_BEGIN_FRAG}}\n    vec4 col=color;\n\n\n    #ifdef HAS_TEXTURES\n        vec2 uv=texCoord;\n\n        #ifdef CROP_TEXCOORDS\n            if(uv.x<0.0 || uv.x>1.0 || uv.y<0.0 || uv.y>1.0) discard;\n        #endif\n\n        #ifdef HAS_TEXTURE_DIFFUSE\n            col=texture(tex,uv);\n\n            #ifdef COLORIZE_TEXTURE\n                col.r*=color.r;\n                col.g*=color.g;\n                col.b*=color.b;\n            #endif\n        #endif\n        col.a*=color.a;\n        #ifdef HAS_TEXTURE_OPACITY\n            #ifdef TRANSFORMALPHATEXCOORDS\n                uv=texCoordOrig;\n            #endif\n            #ifdef ALPHA_MASK_IR\n                col.a*=1.0-texture(texOpacity,uv).r;\n            #endif\n            #ifdef ALPHA_MASK_IALPHA\n                col.a*=1.0-texture(texOpacity,uv).a;\n            #endif\n            #ifdef ALPHA_MASK_ALPHA\n                col.a*=texture(texOpacity,uv).a;\n            #endif\n            #ifdef ALPHA_MASK_LUMI\n                col.a*=dot(vec3(0.2126,0.7152,0.0722), texture(texOpacity,uv).rgb);\n            #endif\n            #ifdef ALPHA_MASK_R\n                col.a*=texture(texOpacity,uv).r;\n            #endif\n            #ifdef ALPHA_MASK_G\n                col.a*=texture(texOpacity,uv).g;\n            #endif\n            #ifdef ALPHA_MASK_B\n                col.a*=texture(texOpacity,uv).b;\n            #endif\n            // #endif\n        #endif\n    #endif\n\n    {{MODULE_COLOR}}\n\n    #ifdef DISCARDTRANS\n        if(col.a<0.2) discard;\n    #endif\n\n    #ifdef VERTEX_COLORS\n        col*=vertCol;\n    #endif\n\n    outColor = col;\n}\n",basicmaterial_vert:"\n{{MODULES_HEAD}}\n\nOUT vec2 texCoord;\nOUT vec2 texCoordOrig;\n\nUNI mat4 projMatrix;\nUNI mat4 modelMatrix;\nUNI mat4 viewMatrix;\n\n#ifdef HAS_TEXTURES\n    UNI float diffuseRepeatX;\n    UNI float diffuseRepeatY;\n    UNI float texOffsetX;\n    UNI float texOffsetY;\n#endif\n\n#ifdef VERTEX_COLORS\n    in vec4 attrVertColor;\n    out vec4 vertCol;\n\n#endif\n\n\nvoid main()\n{\n    mat4 mMatrix=modelMatrix;\n    mat4 modelViewMatrix;\n\n    norm=attrVertNormal;\n    texCoordOrig=attrTexCoord;\n    texCoord=attrTexCoord;\n    #ifdef HAS_TEXTURES\n        texCoord.x=texCoord.x*diffuseRepeatX+texOffsetX;\n        texCoord.y=(1.0-texCoord.y)*diffuseRepeatY+texOffsetY;\n    #endif\n\n    #ifdef VERTEX_COLORS\n        vertCol=attrVertColor;\n    #endif\n\n    vec4 pos = vec4(vPosition, 1.0);\n\n    #ifdef BILLBOARD\n       vec3 position=vPosition;\n       modelViewMatrix=viewMatrix*modelMatrix;\n\n       gl_Position = projMatrix * modelViewMatrix * vec4((\n           position.x * vec3(\n               modelViewMatrix[0][0],\n               modelViewMatrix[1][0],\n               modelViewMatrix[2][0] ) +\n           position.y * vec3(\n               modelViewMatrix[0][1],\n               modelViewMatrix[1][1],\n               modelViewMatrix[2][1]) ), 1.0);\n    #endif\n\n    {{MODULE_VERTEX_POSITION}}\n\n    #ifndef BILLBOARD\n        modelViewMatrix=viewMatrix * mMatrix;\n\n        {{MODULE_VERTEX_MODELVIEW}}\n\n    #endif\n\n    // mat4 modelViewMatrix=viewMatrix*mMatrix;\n\n    #ifndef BILLBOARD\n        // gl_Position = projMatrix * viewMatrix * modelMatrix * pos;\n        gl_Position = projMatrix * modelViewMatrix * pos;\n    #endif\n}\n"};const n=e.inTrigger("render");const a=e.outTrigger("trigger");const o=e.outObject("shader",null,"shader");o.ignoreValueSerialize=true;e.toWorkPortsNeedToBeLinked(n);e.toWorkShouldNotBeChild("Ops.Gl.TextureEffects.ImageCompose",CABLES.OP_PORT_TYPE_FUNCTION);const r=e.patch.cgl;const i=new CGL.Shader(r,"basicmaterialnew",this);i.addAttribute({type:"vec3",name:"vPosition"});i.addAttribute({type:"vec2",name:"attrTexCoord"});i.addAttribute({type:"vec3",name:"attrVertNormal",nameFrag:"norm"});i.addAttribute({type:"float",name:"attrVertIndex"});i.setModules(["MODULE_VERTEX_POSITION","MODULE_COLOR","MODULE_BEGIN_FRAG","MODULE_VERTEX_MODELVIEW"]);i.setSource(t.basicmaterial_vert,t.basicmaterial_frag);o.setRef(i);n.onTriggered=L;const l=e.inValueSlider("r",Math.random());const s=e.inValueSlider("g",Math.random());const c=e.inValueSlider("b",Math.random());const f=e.inValueSlider("a",1);l.setUiAttribs({colorPick:true});const u=i.addUniformFrag("4f","color",l,s,c,f);i.uniformColorDiffuse=u;const d=e.inTexture("texture");let g=null;d.onChange=P;const p=e.inValueBool("colorizeTexture",false);const m=e.inValueBool("Vertex Colors",false);const x=e.inTexture("textureOpacity");let h=null;const v=e.inSwitch("Alpha Mask Source",["Luminance","R","G","B","A","1-A","1-R"],"Luminance");v.setUiAttribs({greyout:true});x.onChange=I;const C=e.inValueBool("Opacity TexCoords Transform",false);const T=e.inValueBool("Discard Transparent Pixels");const b=e.inValue("diffuseRepeatX",1),A=e.inValue("diffuseRepeatY",1),_=e.inValue("Tex Offset X",0),E=e.inValue("Tex Offset Y",0),S=e.inBool("Crop TexCoords",false);i.addUniformFrag("f","diffuseRepeatX",b);i.addUniformFrag("f","diffuseRepeatY",A);i.addUniformFrag("f","texOffsetX",_);i.addUniformFrag("f","texOffsetY",E);const O=e.inValueBool("billboard",false);v.onChange=O.onChange=T.onChange=C.onChange=S.onChange=m.onChange=p.onChange=R;e.setPortGroup("Color",[l,s,c,f]);e.setPortGroup("Color Texture",[d,m,p]);e.setPortGroup("Opacity",[x,v,T,C]);e.setPortGroup("Texture Transform",[b,A,_,E,S]);I();P();e.preRender=function(){i.bind();L()};function L(){if(!i)return;r.pushShader(i);i.popTextures();if(g&&d.get())i.pushTexture(g,d.get());if(h&&x.get())i.pushTexture(h,x.get());a.trigger();r.popShader()}function I(){if(x.get()){if(h!==null)return;i.removeUniform("texOpacity");i.define("HAS_TEXTURE_OPACITY");if(!h)h=new CGL.Uniform(i,"t","texOpacity")}else{i.removeUniform("texOpacity");i.removeDefine("HAS_TEXTURE_OPACITY");h=null}R()}function P(){if(d.get()){if(!i.hasDefine("HAS_TEXTURE_DIFFUSE"))i.define("HAS_TEXTURE_DIFFUSE");if(!g)g=new CGL.Uniform(i,"t","texDiffuse")}else{i.removeUniform("texDiffuse");i.removeDefine("HAS_TEXTURE_DIFFUSE");g=null}M()}function M(){const e=d.isLinked()||x.isLinked();b.setUiAttribs({greyout:!e});A.setUiAttribs({greyout:!e});_.setUiAttribs({greyout:!e});E.setUiAttribs({greyout:!e});p.setUiAttribs({greyout:!e});v.setUiAttribs({greyout:!x.get()});C.setUiAttribs({greyout:!x.get()});let t=true;t=d.get()&&!p.get();l.setUiAttribs({greyout:t});s.setUiAttribs({greyout:t});c.setUiAttribs({greyout:t})}function R(){i.toggleDefine("VERTEX_COLORS",m.get());i.toggleDefine("CROP_TEXCOORDS",S.get());i.toggleDefine("COLORIZE_TEXTURE",p.get());i.toggleDefine("TRANSFORMALPHATEXCOORDS",C.get());i.toggleDefine("DISCARDTRANS",T.get());i.toggleDefine("BILLBOARD",O.get());i.toggleDefine("ALPHA_MASK_ALPHA",v.get()=="A");i.toggleDefine("ALPHA_MASK_IALPHA",v.get()=="1-A");i.toggleDefine("ALPHA_MASK_IR",v.get()=="1-R");i.toggleDefine("ALPHA_MASK_LUMI",v.get()=="Luminance");i.toggleDefine("ALPHA_MASK_R",v.get()=="R");i.toggleDefine("ALPHA_MASK_G",v.get()=="G");i.toggleDefine("ALPHA_MASK_B",v.get()=="B");M()}};Ops.Gl.Shader.BasicMaterial_v3.prototype=new CABLES.Op;CABLES.OPS["ec55d252-3843-41b1-b731-0482dbd9e72b"]={f:Ops.Gl.Shader.BasicMaterial_v3,objName:"Ops.Gl.Shader.BasicMaterial_v3"};Ops.Extension.Deprecated.Sequence34=function(){CABLES.Op.apply(this,arguments);const n=this;const e=n.attachments={};const t=n.inTrigger("exe");let a=[];let o=[];let r=function(){for(let e=0;e<o.length;e++)o[e].trigger()};t.onTriggered=r;let i=16;for(let t=0;t<i;t++){o.push(n.addOutPort(new CABLES.Port(n,"trigger "+t,CABLES.OP_PORT_TYPE_FUNCTION)));if(t<i-1){let e=n.addInPort(new CABLES.Port(n,"exe "+t,CABLES.OP_PORT_TYPE_FUNCTION));e.onTriggered=r;a.push(e)}}};Ops.Extension.Deprecated.Sequence34.prototype=new CABLES.Op;CABLES.OPS["641934f6-5143-4a6b-b592-08ab26e2cab0"]={f:Ops.Extension.Deprecated.Sequence34,objName:"Ops.Extension.Deprecated.Sequence34"};Ops.Gl.RenderToTexture=function(){CABLES.Op.apply(this,arguments);const o=this;const e=o.attachments={};const r=o.patch.cgl;const t=o.inTrigger("render"),n=o.inValueBool("use viewport size",true),a=o.inValueInt("texture width",512),i=o.inValueInt("texture height",512),l=o.inBool("Auto Aspect",false),s=o.inSwitch("filter",["nearest","linear","mipmap"],"linear"),c=o.inSwitch("Wrap",["Clamp","Repeat","Mirror"],"Repeat"),f=o.inSwitch("MSAA",["none","2x","4x","8x"],"none"),u=o.outTrigger("trigger"),d=o.outTexture("texture"),g=o.outTexture("textureDepth"),p=o.inValueBool("HDR"),m=o.inValueBool("Depth",true),x=o.inValueBool("Clear",true);let h=null;let v=true;d.set(CGL.Texture.getEmptyTexture(r));o.setPortGroup("Size",[n,a,i,l]);const C=[0,0,0,0];p.setUiAttribs({title:"Pixelformat Float 32bit"});p.onChange=m.onChange=x.onChange=s.onChange=c.onChange=f.onChange=b;n.onChange=T;t.onTriggered=o.preRender=A;T();function T(){a.setUiAttribs({greyout:n.get()});i.setUiAttribs({greyout:n.get()});l.setUiAttribs({greyout:n.get()})}function b(){v=true}function A(){const e=r.getViewPort();C[0]=e[0];C[1]=e[1];C[2]=e[2];C[3]=e[3];if(!h||v){if(h)h.delete();let n=CGL.Texture.WRAP_REPEAT;if(c.get()=="Clamp")n=CGL.Texture.WRAP_CLAMP_TO_EDGE;else if(c.get()=="Mirror")n=CGL.Texture.WRAP_MIRRORED_REPEAT;let a=CGL.Texture.FILTER_NEAREST;if(s.get()=="nearest")a=CGL.Texture.FILTER_NEAREST;else if(s.get()=="linear")a=CGL.Texture.FILTER_LINEAR;else if(s.get()=="mipmap")a=CGL.Texture.FILTER_MIPMAP;if(p.get()&&s.get()=="mipmap")o.setUiError("fpmipmap","Don't use mipmap and HDR at the same time, many systems do not support this.");else o.setUiError("fpmipmap",null);if(r.glVersion>=2){let e=true;let t=4;if(f.get()=="none"){t=0;e=false}if(f.get()=="2x")t=2;if(f.get()=="4x")t=4;if(f.get()=="8x")t=8;h=new CGL.Framebuffer2(r,8,8,{name:"render2texture "+o.id,isFloatingPointTexture:p.get(),multisampling:e,wrap:n,filter:a,depth:m.get(),multisamplingSamples:t,clear:x.get()})}else{h=new CGL.Framebuffer(r,8,8,{isFloatingPointTexture:p.get(),clear:x.get()});console.log("WEBGL1!!!",h,h.valid)}if(h&&h.valid){g.set(h.getTextureDepth());v=false}else{h=null;v=true}}if(n.get()){a.set(r.getViewPort()[2]);i.set(r.getViewPort()[3])}if(h.getWidth()!=Math.ceil(a.get())||h.getHeight()!=Math.ceil(i.get())){h.setSize(Math.max(1,Math.ceil(a.get())),Math.max(1,Math.ceil(i.get())))}h.renderStart(r);if(l.get())mat4.perspective(r.pMatrix,45,a.get()/i.get(),.1,1e3);u.trigger();h.renderEnd(r);r.setViewPort(C[0],C[1],C[2],C[3]);g.setRef(h.getTextureDepth());d.setRef(h.getTextureColor())}};Ops.Gl.RenderToTexture.prototype=new CABLES.Op;CABLES.OPS["d01fa820-396c-4cb5-9d78-6b14762852af"]={f:Ops.Gl.RenderToTexture,objName:"Ops.Gl.RenderToTexture"};Ops.Gl.Matrix.Transform=function(){CABLES.Op.apply(this,arguments);const n=this;const e=n.attachments={};const t=n.inTrigger("render"),a=n.inValue("posX",0),o=n.inValue("posY",0),r=n.inValue("posZ",0),i=n.inValue("scale",1),l=n.inValue("rotX",0),s=n.inValue("rotY",0),c=n.inValue("rotZ",0),f=n.outTrigger("trigger");n.setPortGroup("Rotation",[l,s,c]);n.setPortGroup("Position",[a,o,r]);n.setPortGroup("Scale",[i]);n.setUiAxisPorts(a,o,r);n.toWorkPortsNeedToBeLinked(t,f);const u=vec3.create();const d=vec3.create();const g=mat4.create();mat4.identity(g);let p=false,m=false,x=true,h=true,v=true;l.onChange=s.onChange=c.onChange=E;a.onChange=o.onChange=r.onChange=A;i.onChange=_;t.onTriggered=function(){let e=false;if(x){T();e=true}if(h){b();e=true}if(v)e=true;if(e)C();const t=n.patch.cg||n.patch.cgl;t.pushModelMatrix();mat4.multiply(t.mMatrix,t.mMatrix,g);f.trigger();t.popModelMatrix();if(CABLES.UI){if(!a.isLinked()&&!o.isLinked()&&!r.isLinked()){gui.setTransform(n.id,a.get(),o.get(),r.get());if(n.isCurrentUiOp())gui.setTransformGizmo({posX:a,posY:o,posZ:r})}}};function C(){mat4.identity(g);if(m)mat4.translate(g,g,u);if(l.get()!==0)mat4.rotateX(g,g,l.get()*CGL.DEG2RAD);if(s.get()!==0)mat4.rotateY(g,g,s.get()*CGL.DEG2RAD);if(c.get()!==0)mat4.rotateZ(g,g,c.get()*CGL.DEG2RAD);if(p)mat4.scale(g,g,d);v=false}function T(){m=false;if(a.get()!==0||o.get()!==0||r.get()!==0)m=true;vec3.set(u,a.get(),o.get(),r.get());x=false}function b(){p=true;vec3.set(d,i.get(),i.get(),i.get());h=false}function A(){x=true}function _(){h=true}function E(){v=true}C()};Ops.Gl.Matrix.Transform.prototype=new CABLES.Op;CABLES.OPS["650baeb1-db2d-4781-9af6-ab4e9d4277be"]={f:Ops.Gl.Matrix.Transform,objName:"Ops.Gl.Matrix.Transform"};Ops.Gl.Meshes.Circle=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={};const n=e.inTrigger("render"),M=e.inValue("radius",.5),R=e.inValueSlider("innerRadius",0),G=e.inValueInt("segments",40),y=e.inValueSlider("percent",1),U=e.inValue("steps",0),N=e.inValueBool("invertSteps",false),w=e.inSwitch("mapping",["flat","round"]),B=e.inValueBool("Spline",false),a=e.inValueBool("Draw",true),o=e.outTrigger("trigger"),F=e.outObject("geometry",null,"geometry");e.setPortGroup("Size",[M,R]);e.setPortGroup("Display",[y,U,N]);w.set("flat");w.onChange=G.onChange=M.onChange=R.onChange=y.onChange=U.onChange=N.onChange=B.onChange=f;F.ignoreValueSerialize=true;const D=e.patch.cgl;let V=new CGL.Geometry("circle");let z=null;const r=-1;let i=0;let l=null;let X=true;n.onTriggered=s;e.preRender=()=>{s()};function s(){if(!CGL.TextureEffect.checkOpNotInTextureEffect(e))return;if(X)c();l=D.getShader();if(!l)return;i=l.glPrimitive;if(B.get())l.glPrimitive=D.gl.LINE_STRIP;if(a.get())z.render(l);o.trigger();l.glPrimitive=i}function c(){const n=Math.max(3,Math.floor(G.get()));V.clear();const t=[];const a=[];const o=[];const r=[];const i=[];let l=0,s=0;let c=0,f=0;let u=0,d=0;let g=0,p=0;let m=0,x=0;let h=0,v=0;let C=0,T=0;let b=0,A=0;const _=Math.max(0,y.get());const E=[];if(B.get()){let e=0;let t=0;const S=[];for(l=0;l<=n*_;l++){s=360/n*l*CGL.DEG2RAD;b=Math.cos(s)*M.get();A=Math.sin(s)*M.get();T=.5;if(l>0){E.push(e);E.push(t);E.push(0);C=1-(l-1)/n;S.push(C,T)}E.push(b);E.push(A);E.push(0);e=b;t=A}V.setPointVertices(E)}else if(R.get()<=0){for(l=0;l<=n*_;l++){s=360/n*l*CGL.DEG2RAD;b=Math.cos(s)*M.get();A=Math.sin(s)*M.get();if(w.get()=="flat"){C=(Math.cos(s)+1)/2;T=1-(Math.sin(s)+1)/2;h=.5;v=.5}else if(w.get()=="round"){C=1-l/n;T=0;h=C;v=1}t.push([b,A,0],[c,f,0],[0,0,0]);a.push(C,T,u,d,h,v);o.push(0,0,1,0,0,1,0,0,1);r.push(1,0,0,1,0,0,1,0,0);i.push(0,1,0,0,1,0,0,1,0);u=C;d=T;c=b;f=A}V=CGL.Geometry.buildFromFaces(t,"circle");V.vertexNormals=o;V.tangents=r;V.biTangents=i;V.texCoords=a}else{let e=0;const O=n*_;const L=0;for(l=0;l<=O;l++){e++;s=360/n*l*CGL.DEG2RAD;b=Math.cos(s)*M.get();A=Math.sin(s)*M.get();const I=Math.cos(s)*R.get()*M.get();const P=Math.sin(s)*R.get()*M.get();if(w.get()=="round"){C=1-l/n;T=0;h=C;v=1}if(U.get()===0||e%parseInt(U.get(),10)===0&&!N.get()||e%parseInt(U.get(),10)!==0&&N.get()){t.push([b,A,0],[c,f,0],[I,P,0]);t.push([I,P,0],[c,f,0],[g,p,0]);a.push(C,0,u,0,h,1,C,1,u,0,m,1);o.push(0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1);r.push(1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0);i.push(0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0)}m=h;x=v;u=C;d=T;c=b;f=A;g=I;p=P}V=CGL.Geometry.buildFromFaces(t,"circle");V.vertexNormals=o;V.tangents=r;V.biTangents=i;if(w.get()=="flat")V.mapTexCoords2d();else V.texCoords=a}F.set(null);F.set(V);if(V.vertices.length==0)return;if(z)z.dispose();z=null;z=new CGL.Mesh(D,V);X=false}function f(){X=true}e.onDelete=function(){if(z)z.dispose()}};Ops.Gl.Meshes.Circle.prototype=new CABLES.Op;CABLES.OPS["4db917cc-2cef-43f4-83d5-38c4572fe943"]={f:Ops.Gl.Meshes.Circle,objName:"Ops.Gl.Meshes.Circle"};Ops.Gl.Meshes.FullscreenRectangle=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={shader_frag:"UNI sampler2D tex;\nIN vec2 texCoord;\n\nvoid main()\n{\n    outColor= texture(tex,texCoord);\n}\n\n",shader_vert:"{{MODULES_HEAD}}\n\nIN vec3 vPosition;\nUNI mat4 projMatrix;\nUNI mat4 mvMatrix;\n\nOUT vec2 texCoord;\nIN vec2 attrTexCoord;\n\nvoid main()\n{\n   vec4 pos=vec4(vPosition,  1.0);\n\n   texCoord=vec2(attrTexCoord.x,(1.0-attrTexCoord.y));\n\n   gl_Position = projMatrix * mvMatrix * pos;\n}\n"};const n=e.inTrigger("render"),a=e.inSwitch("Scale",["Stretch","Fit"],"Fit"),o=e.inValueBool("Flip Y"),r=e.inValueBool("Flip X"),i=e.inTexture("Texture"),l=e.outTrigger("trigger");const s=e.patch.cgl;let c=null;let f=new CGL.Geometry("fullscreen rectangle");let u=0,d=0,g=0,p=0,m=0;e.toWorkShouldNotBeChild("Ops.Gl.TextureEffects.ImageCompose",CABLES.OP_PORT_TYPE_FUNCTION);e.toWorkPortsNeedToBeLinked(n);r.onChange=S;o.onChange=S;n.onTriggered=E;i.onLinkChanged=b;a.onChange=_;const x=new CGL.Shader(s,"fullscreenrectangle",this);x.setModules(["MODULE_VERTEX_POSITION","MODULE_COLOR","MODULE_BEGIN_FRAG"]);x.setSource(t.shader_vert,t.shader_frag);x.fullscreenRectUniform=new CGL.Uniform(x,"t","tex",0);x.aspectUni=new CGL.Uniform(x,"f","aspectTex",0);let h=false;let v=true;let C=false;let T=[];b();_();i.onChange=function(){v=true};function b(){if(!CABLES.UI)return;o.setUiAttribs({greyout:!i.isLinked()});r.setUiAttribs({greyout:!i.isLinked()});a.setUiAttribs({greyout:!i.isLinked()})}function A(){let e=i.get();if(e)h=true;else h=false}e.preRender=function(){A();x.bind();if(c)c.render(x);E()};function _(){C=a.get()=="Fit"}function E(){if(s.getViewPort()[2]!=p||s.getViewPort()[3]!=m||!c)O();if(v)A();s.pushPMatrix();mat4.identity(s.pMatrix);mat4.ortho(s.pMatrix,0,p,m,0,-10,1e3);s.pushModelMatrix();mat4.identity(s.mMatrix);s.pushViewMatrix();mat4.identity(s.vMatrix);if(C&&i.get()){const n=i.get().width/i.get().height;let e=m;let t=m*n;if(t>p){e=p*1/n;t=p}T[0]=s.getViewPort()[0];T[1]=s.getViewPort()[1];T[2]=s.getViewPort()[2];T[3]=s.getViewPort()[3];s.setViewPort((p-t)/2,(m-e)/2,t,e)}if(h){if(i.get())s.setTexture(0,i.get().tex);c.render(x)}else{c.render(s.getShader())}s.gl.clear(s.gl.DEPTH_BUFFER_BIT);s.popPMatrix();s.popModelMatrix();s.popViewMatrix();if(C&&i.get())s.setViewPort(T[0],T[1],T[2],T[3]);l.trigger()}function S(){c=null}function O(){const e=s.getViewPort();if(e[2]==p&&e[3]==m&&c)return;let t=0,n=0;p=e[2];m=e[3];f.vertices=new Float32Array([t+p,n+m,0,t,n+m,0,t+p,n,0,t,n,0]);let a=null;if(o.get())a=new Float32Array([1,0,0,0,1,1,0,1]);else a=new Float32Array([1,1,0,1,1,0,0,0]);if(r.get()){a[0]=0;a[2]=1;a[4]=0;a[6]=1}f.setTexCoords(a);f.verticesIndices=new Uint16Array([2,1,0,3,1,2]);f.vertexNormals=new Float32Array([0,0,1,0,0,1,0,0,1,0,0,1]);f.tangents=new Float32Array([-1,0,0,-1,0,0,-1,0,0,-1,0,0]);f.biTangents==new Float32Array([0,-1,0,0,-1,0,0,-1,0,0,-1,0]);if(!c)c=new CGL.Mesh(s,f);else c.setGeom(f)}};Ops.Gl.Meshes.FullscreenRectangle.prototype=new CABLES.Op;CABLES.OPS["255bd15b-cc91-4a12-9b4e-53c710cbb282"]={f:Ops.Gl.Meshes.FullscreenRectangle,objName:"Ops.Gl.Meshes.FullscreenRectangle"};Ops.Gl.ImageCompose.DrawImage=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={drawimage_frag:"#ifdef HAS_TEXTURES\n  IN vec2 texCoord;\n  UNI sampler2D tex;\n  UNI sampler2D image;\n#endif\n\nIN mat3 transform;\nUNI float rotate;\n\n{{CGL.BLENDMODES}}\n\n#ifdef HAS_TEXTUREALPHA\n   UNI sampler2D imageAlpha;\n#endif\n\nUNI float amount;\n\nvoid main()\n{\n   vec4 blendRGBA=vec4(0.0,0.0,0.0,1.0);\n   #ifdef HAS_TEXTURES\n       vec2 tc=texCoord;\n\n       #ifdef TEX_FLIP_X\n           tc.x=1.0-tc.x;\n       #endif\n       #ifdef TEX_FLIP_Y\n           tc.y=1.0-tc.y;\n       #endif\n\n       #ifdef TEX_TRANSFORM\n           vec3 coordinates=vec3(tc.x, tc.y,1.0);\n           tc=(transform * coordinates ).xy;\n       #endif\n\n       blendRGBA=texture(image,tc);\n\n       vec3 blend=blendRGBA.rgb;\n       vec4 baseRGBA=texture(tex,texCoord);\n       vec3 base=baseRGBA.rgb;\n\n       vec3 colNew=_blend(base,blend);\n\n       #ifdef REMOVE_ALPHA_SRC\n           blendRGBA.a=1.0;\n       #endif\n\n       #ifdef HAS_TEXTUREALPHA\n           vec4 colImgAlpha=texture(imageAlpha,texCoord);\n           float colImgAlphaAlpha=colImgAlpha.a;\n\n           #ifdef ALPHA_FROM_LUMINANCE\n               vec3 gray = vec3(dot(vec3(0.2126,0.7152,0.0722), colImgAlpha.rgb ));\n               colImgAlphaAlpha=(gray.r+gray.g+gray.b)/3.0;\n           #endif\n\n           blendRGBA.a=colImgAlphaAlpha*blendRGBA.a;\n\n           #ifdef INVERT_ALPHA\n           blendRGBA.a=1.0-blendRGBA.a;\n           #endif\n       #endif\n\n\n   #endif\n\n   blendRGBA.rgb=mix( colNew, base ,1.0-blendRGBA.a*amount);\n   blendRGBA.a=1.0;\n\n\n   outColor= blendRGBA;\n}",drawimage_vert:"IN vec3 vPosition;\nIN vec2 attrTexCoord;\nIN vec3 attrVertNormal;\nOUT vec2 texCoord;\nOUT vec3 norm;\nUNI mat4 projMatrix;\nUNI mat4 mvMatrix;\n\nUNI float posX;\nUNI float posY;\nUNI float scale;\nUNI float rotate;\n\nOUT mat3 transform;\n\nvoid main()\n{\n    texCoord=attrTexCoord;\n    norm=attrVertNormal;\n\n    #ifdef TEX_TRANSFORM\n    vec3 coordinates=vec3(attrTexCoord.x, attrTexCoord.y,1.0);\n    float angle = radians( rotate );\n    vec2 scale= vec2(scale,scale);\n    vec2 translate= vec2(posX,posY);\n\n    transform = mat3(   scale.x * cos( angle ), scale.x * sin( angle ), 0.0,\n                        - scale.y * sin( angle ), scale.y * cos( angle ), 0.0,\n                        - 0.5 * scale.x * cos( angle ) + 0.5 * scale.y * sin( angle ) - 0.5 * translate.x*2.0 + 0.5,  - 0.5 * scale.x * sin( angle ) - 0.5 * scale.y * cos( angle ) - 0.5 * translate.y*2.0 + 0.5, 1.0);\n    #endif\n\n    gl_Position = projMatrix * mvMatrix * vec4(vPosition,  1.0);\n}"};const n=e.inTrigger("render");const a=e.inFloatSlider("amount");const o=CGL.TextureEffect.AddBlendSelect(e,"blendMode");const r=e.inTexture("image");const i=e.inTexture("imageAlpha");const l=e.inValueSelect("alphaSrc",["alpha channel","luminance"]);const s=e.inValueBool("removeAlphaSrc");const c=e.inValueBool("invert alpha channel");const f=e.outTrigger("trigger");e.toWorkPortsNeedToBeLinked(r);o.set("normal");const u=e.patch.cgl;const d=new CGL.Shader(u,"drawimage");a.set(1);n.onTriggered=C;d.setSource(t.drawimage_vert,t.drawimage_frag);const g=new CGL.Uniform(d,"t","tex",0);const p=new CGL.Uniform(d,"t","image",1);const m=new CGL.Uniform(d,"t","imageAlpha",2);c.onChange=function(){if(c.get())d.define("INVERT_ALPHA");else d.removeDefine("INVERT_ALPHA")};s.onChange=function(){if(s.get())d.define("REMOVE_ALPHA_SRC");else d.removeDefine("REMOVE_ALPHA_SRC")};s.set(true);l.onChange=function(){if(l.get()=="luminance")d.define("ALPHA_FROM_LUMINANCE");else d.removeDefine("ALPHA_FROM_LUMINANCE")};l.set("alpha channel");{const T=e.inValueBool("flip x");const b=e.inValueBool("flip y");T.onChange=function(){if(T.get())d.define("TEX_FLIP_X");else d.removeDefine("TEX_FLIP_X")};b.onChange=function(){if(b.get())d.define("TEX_FLIP_Y");else d.removeDefine("TEX_FLIP_Y")}}{const A=e.inValueFloat("scale");const _=e.inValueFloat("pos x");const E=e.inValueFloat("pos y");const S=e.inValueFloat("rotate");A.set(1);const O=new CGL.Uniform(d,"f","scale",A.get());const L=new CGL.Uniform(d,"f","posX",_.get());const I=new CGL.Uniform(d,"f","posY",E.get());const P=new CGL.Uniform(d,"f","rotate",S.get());function x(){if(A.get()!=1||_.get()!=0||E.get()!=0||S.get()!=0){if(!d.hasDefine("TEX_TRANSFORM"))d.define("TEX_TRANSFORM");O.setValue(parseFloat(A.get()));L.setValue(_.get());I.setValue(E.get());P.setValue(S.get())}else{}}A.onChange=x;_.onChange=x;E.onChange=x;S.onChange=x}CGL.TextureEffect.setupBlending(e,d,o,a);const h=new CGL.Uniform(d,"f","amount",a);let v=false;function C(){if(i.get()&&!v||!i.get()&&v){if(i.get()&&i.get().tex){d.define("HAS_TEXTUREALPHA");v=true}else{d.removeDefine("HAS_TEXTUREALPHA");v=false}}if(r.get()&&r.get().tex&&a.get()>0){u.pushShader(d);u.currentTextureEffect.bind();u.setTexture(0,u.currentTextureEffect.getCurrentSourceTexture().tex);if(r.get()&&r.get().tex)u.setTexture(1,r.get().tex);else u.setTexture(1,null);if(i.get()&&i.get().tex)u.setTexture(2,i.get().tex);else u.setTexture(2,null);u.currentTextureEffect.finish();u.popShader()}f.trigger()}};Ops.Gl.ImageCompose.DrawImage.prototype=new CABLES.Op;CABLES.OPS["8248b866-9492-48c8-897d-3097c6fe6fe8"]={f:Ops.Gl.ImageCompose.DrawImage,objName:"Ops.Gl.ImageCompose.DrawImage"};Ops.Gl.ImageCompose.Color=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={color_frag:"IN vec2 texCoord;\nUNI sampler2D tex;\nUNI float r;\nUNI float g;\nUNI float b;\nUNI float amount;\n\n#ifdef MASK\n    UNI sampler2D mask;\n#endif\n\n{{CGL.BLENDMODES}}\n\nvoid main()\n{\n    vec4 col=vec4(r,g,b,1.0);\n    vec4 base=texture(tex,texCoord);\n\n    float am=amount;\n    #ifdef MASK\n        float msk=texture(mask,texCoord).r;\n        #ifdef INVERTMASK\n            msk=1.0-msk;\n        #endif\n        am*=1.0-msk;\n    #endif\n\n    outColor= cgl_blend(base,col,am);\n    outColor.a*=base.a;\n}\n"};const n=e.inTrigger("render"),a=CGL.TextureEffect.AddBlendSelect(e),o=e.inValueSlider("Amount",1),r=e.inTexture("Mask"),i=e.inValueBool("Mask Invert"),l=e.inValueSlider("r",Math.random()),s=e.inValueSlider("g",Math.random()),c=e.inValueSlider("b",Math.random()),f=e.outTrigger("trigger");l.setUiAttribs({colorPick:true});e.setPortGroup("Color",[l,s,c]);const u=0;const d=e.patch.cgl;const g=new CGL.Shader(d,"textureeffect color");const p=t.color_frag||"";g.setSource(g.getDefaultVertexShader(),p);CGL.TextureEffect.setupBlending(e,g,a,o);const m=new CGL.Uniform(g,"t","tex",u),x=new CGL.Uniform(g,"t","mask",1),h=new CGL.Uniform(g,"f","r",l),v=new CGL.Uniform(g,"f","g",s),C=new CGL.Uniform(g,"f","b",c),T=new CGL.Uniform(g,"f","amount",o);r.onChange=function(){if(r.get())g.define("MASK");else g.removeDefine("MASK")};i.onChange=function(){if(i.get())g.define("INVERTMASK");else g.removeDefine("INVERTMASK")};n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(e))return;d.pushShader(g);d.currentTextureEffect.bind();d.setTexture(u,d.currentTextureEffect.getCurrentSourceTexture().tex);if(r.get())d.setTexture(1,r.get().tex);d.currentTextureEffect.finish();d.popShader();f.trigger()}};Ops.Gl.ImageCompose.Color.prototype=new CABLES.Op;CABLES.OPS["c0acfc80-16f9-4f17-978d-bad650f3ed1c"]={f:Ops.Gl.ImageCompose.Color,objName:"Ops.Gl.ImageCompose.Color"};Ops.Extension.Deprecated.Twirl=function(){CABLES.Op.apply(this,arguments);const t=this;const e=t.attachments={};let n=t.inTrigger("render");let a=t.inValue("amount");let o=t.inValue("times",1);let r=t.outTrigger("trigger");let i=t.patch.cgl;let l=new CGL.Shader(i,t.name,t);let s="".endl()+"IN vec2 texCoord;".endl()+"UNI sampler2D tex;".endl()+"UNI float amount;".endl()+"UNI float times;".endl()+"void main()".endl()+"{".endl()+"   vec2 tc = texCoord.st-0.5;".endl()+"   float angle = times*atan(tc.y,tc.x);".endl()+"   float radius = length(tc);".endl()+"   angle+= radius*amount*1.0;".endl()+"   vec2 shifted = radius*vec2(cos(angle), sin(angle));".endl()+"   vec4 col = texture2D(tex, (shifted+0.5));".endl()+"   outColor= col;".endl()+"}";l.setSource(l.getDefaultVertexShader(),s);let c=new CGL.Uniform(l,"t","tex",0);let f=new CGL.Uniform(l,"f","amount",0);let u=new CGL.Uniform(l,"f","times",o);n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(t))return;let e=i.currentTextureEffect.getCurrentSourceTexture();f.setValue(a.get()*(1/e.width));i.pushShader(l);i.currentTextureEffect.bind();i.setTexture(0,e.tex);i.currentTextureEffect.finish();i.popShader();r.trigger()}};Ops.Extension.Deprecated.Twirl.prototype=new CABLES.Op;CABLES.OPS["2c321015-1af1-49da-b5a6-1664b5ad9a35"]={f:Ops.Extension.Deprecated.Twirl,objName:"Ops.Extension.Deprecated.Twirl"};Ops.Gl.ImageCompose.Hue=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={hue_frag:"UNI float hue;\n\n#ifdef HAS_TEXTURES\n  IN vec2 texCoord;\n  UNI sampler2D tex;\n#endif\n\n#ifdef TEX_MASK\n    UNI sampler2D texMask;\n#endif\n#ifdef TEX_OFFSET\n    UNI sampler2D texOffset;\n#endif\n\nvec3 rgb2hsv(vec3 c)\n{\n    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);\n    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));\n    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));\n\n    float d = q.x - min(q.w, q.y);\n    float e = 1.0e-10;\n    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);\n}\n\nvec3 hsv2rgb(vec3 c)\n{\n    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);\n    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);\n    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);\n}\n\nvoid main()\n{\n   vec4 col=vec4(1.0,0.0,0.0,1.0);\n    #ifdef HAS_TEXTURES\n        col=texture(tex,texCoord);\n        float h=hue;\n\n        #ifdef TEX_OFFSET\n            h += texture(texOffset,texCoord).r;\n        #endif\n\n\n        vec3 hsv = rgb2hsv(col.rgb);\n        hsv.x=hsv.x+h;\n\n        #ifndef TEX_MASK\n            col.rgb = hsv2rgb(hsv);\n        #endif\n\n        #ifdef TEX_MASK\n            col.rgb = mix(col.rgb,hsv2rgb(hsv),texture(texMask,texCoord).r);\n        #endif\n\n   #endif\n   outColor= col;\n}"};const n=e.inTrigger("render"),a=e.inValueSlider("hue",1),o=e.inTexture("Mask"),r=e.inTexture("Offset"),i=e.outTrigger("trigger");const l=e.patch.cgl;const s=new CGL.Shader(l,e.name,e);s.setSource(s.getDefaultVertexShader(),t.hue_frag);const c=new CGL.Uniform(s,"t","tex",0);const f=new CGL.Uniform(s,"t","texMask",1);const u=new CGL.Uniform(s,"t","texOffset",2);const d=new CGL.Uniform(s,"f","hue",1);a.onChange=function(){d.setValue(a.get())};o.onChange=r.onChange=()=>{s.toggleDefine("TEX_MASK",o.get());s.toggleDefine("TEX_OFFSET",r.get())};n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(e))return;l.pushShader(s);l.currentTextureEffect.bind();l.setTexture(0,l.currentTextureEffect.getCurrentSourceTexture().tex);if(o.get())l.setTexture(1,o.get().tex);if(r.get())l.setTexture(2,r.get().tex);l.currentTextureEffect.finish();l.popShader();i.trigger()}};Ops.Gl.ImageCompose.Hue.prototype=new CABLES.Op;CABLES.OPS["94ef0da0-c920-415c-81b0-fecbd437991d"]={f:Ops.Gl.ImageCompose.Hue,objName:"Ops.Gl.ImageCompose.Hue"};Ops.Gl.ImageCompose.ImageCompose=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={};const n=e.inTrigger("render");const a=e.inBool("use viewport size");const o=e.inValueInt("width");const r=e.inValueInt("height");const i=e.inSwitch("filter",["nearest","linear","mipmap"],"linear");const l=e.inValueSelect("wrap",["clamp to edge","repeat","mirrored repeat"]);const s=e.inValueBool("HDR");const c=e.outTrigger("trigger");const f=e.outTexture("texture_out");const u=e.inValueSlider("Background Alpha",0);const d=e.outValue("Aspect Ratio");e.setPortGroup("Texture Size",[a,o,r]);e.setPortGroup("Texture Settings",[l,i,s]);const g=e.patch.cgl;f.set(CGL.Texture.getEmptyTexture(g));let p=null;let m=null;let x=8,h=8;const v=[0,0,0,0];let C=true;const T="".endl()+"uniform float a;".endl()+"void main()".endl()+"{".endl()+"   outColor= vec4(0.0,0.0,0.0,a);".endl()+"}";const b=new CGL.Shader(g,"imgcompose bg");b.setSource(b.getDefaultVertexShader(),T);const A=new CGL.Uniform(b,"f","a",u);let _=CGL.Texture.FILTER_LINEAR;let E=CGL.Texture.WRAP_CLAMP_TO_EDGE;function S(){if(p)p.delete();if(m)m.delete();p=new CGL.TextureEffect(g,{isFloatingPointTexture:s.get()});m=new CGL.Texture(g,{name:"image compose",isFloatingPointTexture:s.get(),filter:_,wrap:E,width:Math.ceil(o.get()),height:Math.ceil(r.get())});p.setSourceTexture(m);f.set(CGL.Texture.getEmptyTexture(g));C=false}s.onChange=function(){C=true};function O(){if(!p)S();if(a.get()){x=g.getViewPort()[2];h=g.getViewPort()[3]}else{x=Math.ceil(o.get());h=Math.ceil(r.get())}if((x!=m.width||h!=m.height)&&(x!==0&&h!==0)){r.set(h);o.set(x);m.setSize(x,h);d.set(x/h);p.setSourceTexture(m);f.set(CGL.Texture.getEmptyTexture(g));f.set(m)}if(f.get()&&_!=CGL.Texture.FILTER_NEAREST){if(!f.get().isPowerOfTwo())e.setUiError("hintnpot","texture dimensions not power of two! - texture filtering when scaling will not work on ios devices.",0);else e.setUiError("hintnpot",null,0)}else e.setUiError("hintnpot",null,0)}function L(){if(a.get()){o.setUiAttribs({greyout:true});r.setUiAttribs({greyout:true})}else{o.setUiAttribs({greyout:false});r.setUiAttribs({greyout:false})}}a.onChange=function(){L();if(a.get()){o.onChange=null;r.onChange=null}else{o.onChange=O;r.onChange=O}O()};e.preRender=function(){I();b.bind()};var I=function(){if(!p||C){S()}const e=g.getViewPort();v[0]=e[0];v[1]=e[1];v[2]=e[2];v[3]=e[3];g.gl.blendFunc(g.gl.SRC_ALPHA,g.gl.ONE_MINUS_SRC_ALPHA);O();g.currentTextureEffect=p;p.setSourceTexture(m);p.startEffect();g.pushShader(b);g.currentTextureEffect.bind();g.setTexture(0,g.currentTextureEffect.getCurrentSourceTexture().tex);g.currentTextureEffect.finish();g.popShader();c.trigger();f.set(p.getCurrentSourceTexture());p.endEffect();g.setViewPort(v[0],v[1],v[2],v[3]);g.gl.blendFunc(g.gl.SRC_ALPHA,g.gl.ONE_MINUS_SRC_ALPHA);g.currentTextureEffect=null};function P(){if(l.get()=="repeat")E=CGL.Texture.WRAP_REPEAT;if(l.get()=="mirrored repeat")E=CGL.Texture.WRAP_MIRRORED_REPEAT;if(l.get()=="clamp to edge")E=CGL.Texture.WRAP_CLAMP_TO_EDGE;C=true;O()}l.set("repeat");l.onChange=P;function M(){if(i.get()=="nearest")_=CGL.Texture.FILTER_NEAREST;if(i.get()=="linear")_=CGL.Texture.FILTER_LINEAR;if(i.get()=="mipmap")_=CGL.Texture.FILTER_MIPMAP;C=true;O()}i.set("linear");i.onChange=M;a.set(true);n.onTriggered=I;e.preRender=I;o.set(640);r.set(360);M();P();L()};Ops.Gl.ImageCompose.ImageCompose.prototype=new CABLES.Op;CABLES.OPS["5c04608d-1e42-4e36-be00-1be4a81fc309"]={f:Ops.Gl.ImageCompose.ImageCompose,objName:"Ops.Gl.ImageCompose.ImageCompose"};Ops.Gl.ImageCompose.DrawImage_v3=function(){CABLES.Op.apply(this,arguments);const a=this;const e=a.attachments={drawimage_frag:"#ifdef HAS_TEXTURES\n    IN vec2 texCoord;\n    UNI sampler2D tex;\n    UNI sampler2D image;\n#endif\n\n#ifdef TEX_TRANSFORM\n    IN mat3 transform;\n#endif\n// UNI float rotate;\n\n{{CGL.BLENDMODES}}\n\n#ifdef HAS_TEXTUREALPHA\n   UNI sampler2D imageAlpha;\n#endif\n\nUNI float amount;\n\n#ifdef ASPECT_RATIO\n    UNI float aspectTex;\n    UNI float aspectPos;\n#endif\n\nvoid main()\n{\n    vec4 blendRGBA=vec4(0.0,0.0,0.0,1.0);\n\n    #ifdef HAS_TEXTURES\n        vec2 tc=texCoord;\n\n        #ifdef TEX_FLIP_X\n            tc.x=1.0-tc.x;\n        #endif\n        #ifdef TEX_FLIP_Y\n            tc.y=1.0-tc.y;\n        #endif\n\n        #ifdef ASPECT_RATIO\n            #ifdef ASPECT_AXIS_X\n                tc.y=(1.0-aspectPos)-(((1.0-aspectPos)-tc.y)*aspectTex);\n            #endif\n            #ifdef ASPECT_AXIS_Y\n                tc.x=(1.0-aspectPos)-(((1.0-aspectPos)-tc.x)/aspectTex);\n            #endif\n        #endif\n\n        #ifdef TEX_TRANSFORM\n            vec3 coordinates=vec3(tc.x, tc.y,1.0);\n            tc=(transform * coordinates ).xy;\n        #endif\n\n        blendRGBA=texture(image,tc);\n\n        vec3 blend=blendRGBA.rgb;\n        vec4 baseRGBA=texture(tex,texCoord);\n        vec3 base=baseRGBA.rgb;\n\n\n        #ifdef PREMUL\n            blend.rgb = (blend.rgb) + (base.rgb * (1.0 - blendRGBA.a));\n        #endif\n\n        vec3 colNew=_blend(base,blend);\n\n\n\n\n        #ifdef REMOVE_ALPHA_SRC\n            blendRGBA.a=1.0;\n        #endif\n\n        #ifdef HAS_TEXTUREALPHA\n            vec4 colImgAlpha=texture(imageAlpha,tc);\n            float colImgAlphaAlpha=colImgAlpha.a;\n\n            #ifdef ALPHA_FROM_LUMINANCE\n                vec3 gray = vec3(dot(vec3(0.2126,0.7152,0.0722), colImgAlpha.rgb ));\n                colImgAlphaAlpha=(gray.r+gray.g+gray.b)/3.0;\n            #endif\n\n            #ifdef ALPHA_FROM_INV_UMINANCE\n                vec3 gray = vec3(dot(vec3(0.2126,0.7152,0.0722), colImgAlpha.rgb ));\n                colImgAlphaAlpha=1.0-(gray.r+gray.g+gray.b)/3.0;\n            #endif\n\n            #ifdef INVERT_ALPHA\n                colImgAlphaAlpha=clamp(colImgAlphaAlpha,0.0,1.0);\n                colImgAlphaAlpha=1.0-colImgAlphaAlpha;\n            #endif\n\n            blendRGBA.a=colImgAlphaAlpha*blendRGBA.a;\n        #endif\n    #endif\n\n    float am=amount;\n\n    #ifdef CLIP_REPEAT\n        if(tc.y>1.0 || tc.y<0.0 || tc.x>1.0 || tc.x<0.0)\n        {\n            // colNew.rgb=vec3(0.0);\n            am=0.0;\n        }\n    #endif\n\n    #ifdef ASPECT_RATIO\n        #ifdef ASPECT_CROP\n            if(tc.y>1.0 || tc.y<0.0 || tc.x>1.0 || tc.x<0.0)\n            {\n                colNew.rgb=base.rgb;\n                am=0.0;\n            }\n\n        #endif\n    #endif\n\n\n\n    #ifndef PREMUL\n        blendRGBA.rgb=mix(colNew,base,1.0-(am*blendRGBA.a));\n        blendRGBA.a=clamp(baseRGBA.a+(blendRGBA.a*am),0.,1.);\n    #endif\n\n    #ifdef PREMUL\n        // premultiply\n        // blendRGBA.rgb = (blendRGBA.rgb) + (baseRGBA.rgb * (1.0 - blendRGBA.a));\n        blendRGBA=vec4(\n            mix(colNew.rgb,base,1.0-(am*blendRGBA.a)),\n            blendRGBA.a*am+baseRGBA.a\n            );\n    #endif\n\n    #ifdef ALPHA_MASK\n    blendRGBA.a=baseRGBA.a;\n    #endif\n\n    outColor=blendRGBA;\n}\n\n\n\n\n\n\n\n",drawimage_vert:"IN vec3 vPosition;\nIN vec2 attrTexCoord;\nIN vec3 attrVertNormal;\n\nUNI mat4 projMatrix;\nUNI mat4 mvMatrix;\n\nOUT vec2 texCoord;\n// OUT vec3 norm;\n\n#ifdef TEX_TRANSFORM\n    UNI float posX;\n    UNI float posY;\n    UNI float scaleX;\n    UNI float scaleY;\n    UNI float rotate;\n    OUT mat3 transform;\n#endif\n\nvoid main()\n{\n   texCoord=attrTexCoord;\n//   norm=attrVertNormal;\n\n   #ifdef TEX_TRANSFORM\n        vec3 coordinates=vec3(attrTexCoord.x, attrTexCoord.y,1.0);\n        float angle = radians( rotate );\n        vec2 scale= vec2(scaleX,scaleY);\n        vec2 translate= vec2(posX,posY);\n\n        transform = mat3(   scale.x * cos( angle ), scale.x * sin( angle ), 0.0,\n            - scale.y * sin( angle ), scale.y * cos( angle ), 0.0,\n            - 0.5 * scale.x * cos( angle ) + 0.5 * scale.y * sin( angle ) - 0.5 * translate.x*2.0 + 0.5,  - 0.5 * scale.x * sin( angle ) - 0.5 * scale.y * cos( angle ) - 0.5 * translate.y*2.0 + 0.5, 1.0);\n   #endif\n\n   gl_Position = projMatrix * mvMatrix * vec4(vPosition,  1.0);\n}\n"};const t=a.inTrigger("render"),n=CGL.TextureEffect.AddBlendSelect(a,"blendMode"),o=a.inValueSlider("amount",1),r=a.inTexture("Image"),i=a.inValueBool("Premultiplied",false),l=a.inValueBool("Alpha Mask",false),s=a.inValueBool("removeAlphaSrc",false),c=a.inTexture("Mask"),f=a.inValueSelect("Mask Src",["alpha channel","luminance","luminance inv"],"luminance"),u=a.inValueBool("Invert alpha channel"),d=a.inValueBool("Aspect Ratio",false),g=a.inValueSelect("Stretch Axis",["X","Y"],"X"),p=a.inValueSlider("Position",0),m=a.inValueBool("Crop",false),x=a.outTrigger("trigger");n.set("normal");const h=a.patch.cgl;const v=new CGL.Shader(h,"drawimage");c.onLinkChanged=C;a.setPortGroup("Mask",[c,f,u]);a.setPortGroup("Aspect Ratio",[d,p,m,g]);function C(){if(c.isLinked()){s.setUiAttribs({greyout:true});f.setUiAttribs({greyout:false});u.setUiAttribs({greyout:false})}else{s.setUiAttribs({greyout:false});f.setUiAttribs({greyout:true});u.setUiAttribs({greyout:true})}}a.toWorkPortsNeedToBeLinked(r);v.setSource(e.drawimage_vert,e.drawimage_frag);const T=new CGL.Uniform(v,"t","tex",0),N=new CGL.Uniform(v,"t","image",1),w=new CGL.Uniform(v,"t","imageAlpha",2),b=new CGL.Uniform(v,"f","aspectTex",1),B=new CGL.Uniform(v,"f","aspectPos",p);d.onChange=m.onChange=g.onChange=A;function A(){v.removeDefine("ASPECT_AXIS_X");v.removeDefine("ASPECT_AXIS_Y");v.removeDefine("ASPECT_CROP");p.setUiAttribs({greyout:!d.get()});m.setUiAttribs({greyout:!d.get()});g.setUiAttribs({greyout:!d.get()});if(d.get()){v.define("ASPECT_RATIO");if(m.get())v.define("ASPECT_CROP");if(g.get()=="X")v.define("ASPECT_AXIS_X");if(g.get()=="Y")v.define("ASPECT_AXIS_Y")}else{v.removeDefine("ASPECT_RATIO");if(m.get())v.define("ASPECT_CROP");if(g.get()=="X")v.define("ASPECT_AXIS_X");if(g.get()=="Y")v.define("ASPECT_AXIS_Y")}}const _=a.inValueBool("flip x");const E=a.inValueBool("flip y");let S=a.inValueBool("Transform");let O=a.inValueSlider("Scale X",1);let L=a.inValueSlider("Scale Y",1);let I=a.inValue("Position X",0);let P=a.inValue("Position Y",0);let M=a.inValue("Rotation",0);const R=a.inValueBool("Clip Repeat",false);const F=new CGL.Uniform(v,"f","scaleX",O);const D=new CGL.Uniform(v,"f","scaleY",L);const V=new CGL.Uniform(v,"f","posX",I);const z=new CGL.Uniform(v,"f","posY",P);const X=new CGL.Uniform(v,"f","rotate",M);S.onChange=G;function G(){v.toggleDefine("TEX_TRANSFORM",S.get());O.setUiAttribs({greyout:!S.get()});L.setUiAttribs({greyout:!S.get()});I.setUiAttribs({greyout:!S.get()});P.setUiAttribs({greyout:!S.get()});M.setUiAttribs({greyout:!S.get()})}CGL.TextureEffect.setupBlending(a,v,n,o);const k=new CGL.Uniform(v,"f","amount",o);t.onTriggered=U;R.onChange=c.onChange=i.onChange=l.onChange=u.onChange=E.onChange=_.onChange=s.onChange=f.onChange=y;G();C();A();y();function y(){v.toggleDefine("REMOVE_ALPHA_SRC",s.get());v.toggleDefine("ALPHA_MASK",l.get());v.toggleDefine("CLIP_REPEAT",R.get());v.toggleDefine("HAS_TEXTUREALPHA",c.get()&&c.get().tex);v.toggleDefine("TEX_FLIP_X",_.get());v.toggleDefine("TEX_FLIP_Y",E.get());v.toggleDefine("INVERT_ALPHA",u.get());v.toggleDefine("ALPHA_FROM_LUMINANCE",f.get()=="luminance");v.toggleDefine("ALPHA_FROM_INV_UMINANCE",f.get()=="luminance_inv");v.toggleDefine("PREMUL",i.get())}function U(){if(!CGL.TextureEffect.checkOpInEffect(a))return;const e=r.get();if(e&&e.tex&&o.get()>0){h.pushShader(v);h.currentTextureEffect.bind();const t=h.currentTextureEffect.getCurrentSourceTexture();h.setTexture(0,t.tex);const n=1/(h.currentTextureEffect.getWidth()/h.currentTextureEffect.getHeight())*(e.width/e.height);b.setValue(n);h.setTexture(1,e.tex);if(c.get()&&c.get().tex){h.setTexture(2,c.get().tex)}h.pushBlendMode(CGL.BLEND_NONE,true);h.currentTextureEffect.finish();h.popBlendMode();h.popShader()}x.trigger()}};Ops.Gl.ImageCompose.DrawImage_v3.prototype=new CABLES.Op;CABLES.OPS["8f6b2f15-fcb0-4597-90c0-e5173f2969fe"]={f:Ops.Gl.ImageCompose.DrawImage_v3,objName:"Ops.Gl.ImageCompose.DrawImage_v3"};Ops.Trigger.Sequence=function(){CABLES.Op.apply(this,arguments);const r=this;const e=r.attachments={};const t=r.inTrigger("exe"),n=r.inTriggerButton("Clean up connections");r.setUiAttrib({resizable:true,resizableY:false,stretchPorts:true});const a=[],i=[],o=16;let l=null,s=[];t.onTriggered=u;n.onTriggered=d;n.setUiAttribs({hideParam:true,hidePort:true});for(let t=0;t<o;t++){const g=r.outTrigger("trigger "+t);i.push(g);g.onLinkChanged=f;if(t<o-1){let e=r.inTrigger("exe "+t);e.onTriggered=u;a.push(e)}}c();function c(){s.length=0;for(let e=0;e<i.length;e++)if(i[e].links.length>0)s.push(i[e])}function f(){c();clearTimeout(l);l=setTimeout(()=>{let t=false;for(let e=0;e<i.length;e++)if(i[e].links.length>1)t=true;n.setUiAttribs({hideParam:!t});if(r.isCurrentUiOp())r.refreshParams()},60)}function u(){for(let e=0;e<s.length;e++)s[e].trigger()}function d(){let a=0;for(let n=0;n<i.length;n++){let t=[];if(i[n].links.length>1)for(let e=1;e<i[n].links.length;e++){while(i[a].links.length>0)a++;t.push(i[n].links[e]);const o=i[n].links[e].getOtherPort(i[n]);r.patch.link(r,"trigger "+a,o.op,o.name);a++}for(let e=0;e<t.length;e++)t[e].remove()}f();c()}};Ops.Trigger.Sequence.prototype=new CABLES.Op;CABLES.OPS["a466bc1f-06e9-4595-8849-bffb9fe22f99"]={f:Ops.Trigger.Sequence,objName:"Ops.Trigger.Sequence"};Ops.Gl.MainLoop=function(){CABLES.Op.apply(this,arguments);const a=this;const e=a.attachments={};const t=a.inValue("FPS Limit",0),n=a.outTrigger("trigger"),o=a.outNumber("width"),r=a.outNumber("height"),i=a.inValueBool("Reduce FPS not focussed",false),l=a.inValueBool("Reduce FPS loading"),s=a.inValueBool("Clear",true),c=a.inValueBool("ClearAlpha",true),f=a.inValueBool("Fullscreen Button",false),u=a.inValueBool("Active",true),d=a.inValueBool("Hires Displays",false),g=a.inSwitch("Pixel Unit",["Display","CSS"],"Display");a.onAnimFrame=O;d.onChange=function(){if(d.get())a.patch.cgl.pixelDensity=window.devicePixelRatio;else a.patch.cgl.pixelDensity=1;a.patch.cgl.updateSize();if(CABLES.UI)gui.setLayout()};u.onChange=function(){a.patch.removeOnAnimFrame(a);if(u.get()){a.setUiAttrib({extendTitle:""});a.onAnimFrame=O;a.patch.addOnAnimFrame(a);a.log("adding again!")}else{a.setUiAttrib({extendTitle:"Inactive"})}};const p=a.patch.cgl;let m=0;let x=0;let h=null;let v=false;if(!a.patch.cgl)a.uiAttr({error:"No webgl cgl context"});const C=vec3.create();vec3.set(C,0,0,0);const T=vec3.create();vec3.set(T,0,0,-2);f.onChange=S;setTimeout(S,100);let b=null;let A=true;let _=true;window.addEventListener("blur",()=>{A=false});window.addEventListener("focus",()=>{A=true});document.addEventListener("visibilitychange",()=>{_=!document.hidden});L();p.mainloopOp=this;g.onChange=()=>{o.set(0);r.set(0)};function E(){if(l.get()&&a.patch.loading.getProgress()<1)return 5;if(i.get()){if(!_)return 10;if(!A)return 30}return t.get()}function S(){function e(){if(b)b.style.display="block"}function t(){if(b)b.style.display="none"}a.patch.cgl.canvas.addEventListener("mouseleave",t);a.patch.cgl.canvas.addEventListener("mouseenter",e);if(f.get()){if(!b){b=document.createElement("div");const n=a.patch.cgl.canvas.parentElement;if(n)n.appendChild(b);b.addEventListener("mouseenter",e);b.addEventListener("click",function(e){if(CABLES.UI&&!e.shiftKey)gui.cycleFullscreen();else p.fullScreen()})}b.style.padding="10px";b.style.position="absolute";b.style.right="5px";b.style.top="5px";b.style.width="20px";b.style.height="20px";b.style.cursor="pointer";b.style["border-radius"]="40px";b.style.background="#444";b.style["z-index"]="9999";b.style.display="none";b.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" id="Capa_1" x="0px" y="0px" viewBox="0 0 490 490" style="width:20px;height:20px;" xml:space="preserve" width="512px" height="512px"><g><path d="M173.792,301.792L21.333,454.251v-80.917c0-5.891-4.776-10.667-10.667-10.667C4.776,362.667,0,367.442,0,373.333V480     c0,5.891,4.776,10.667,10.667,10.667h106.667c5.891,0,10.667-4.776,10.667-10.667s-4.776-10.667-10.667-10.667H36.416     l152.459-152.459c4.093-4.237,3.975-10.99-0.262-15.083C184.479,297.799,177.926,297.799,173.792,301.792z" fill="#FFFFFF"/><path d="M480,0H373.333c-5.891,0-10.667,4.776-10.667,10.667c0,5.891,4.776,10.667,10.667,10.667h80.917L301.792,173.792     c-4.237,4.093-4.354,10.845-0.262,15.083c4.093,4.237,10.845,4.354,15.083,0.262c0.089-0.086,0.176-0.173,0.262-0.262     L469.333,36.416v80.917c0,5.891,4.776,10.667,10.667,10.667s10.667-4.776,10.667-10.667V10.667C490.667,4.776,485.891,0,480,0z" fill="#FFFFFF"/><path d="M36.416,21.333h80.917c5.891,0,10.667-4.776,10.667-10.667C128,4.776,123.224,0,117.333,0H10.667     C4.776,0,0,4.776,0,10.667v106.667C0,123.224,4.776,128,10.667,128c5.891,0,10.667-4.776,10.667-10.667V36.416l152.459,152.459     c4.237,4.093,10.99,3.975,15.083-0.262c3.992-4.134,3.992-10.687,0-14.82L36.416,21.333z" fill="#FFFFFF"/><path d="M480,362.667c-5.891,0-10.667,4.776-10.667,10.667v80.917L316.875,301.792c-4.237-4.093-10.99-3.976-15.083,0.261     c-3.993,4.134-3.993,10.688,0,14.821l152.459,152.459h-80.917c-5.891,0-10.667,4.776-10.667,10.667s4.776,10.667,10.667,10.667     H480c5.891,0,10.667-4.776,10.667-10.667V373.333C490.667,367.442,485.891,362.667,480,362.667z" fill="#FFFFFF"/></g></svg>'}else{if(b){b.style.display="none";b.remove();b=null}}}a.onDelete=function(){p.gl.clearColor(0,0,0,0);p.gl.clear(p.gl.COLOR_BUFFER_BIT|p.gl.DEPTH_BUFFER_BIT)};function O(e){if(!u.get())return;if(p.aborted||p.canvas.clientWidth===0||p.canvas.clientHeight===0)return;a.patch.cg=p;if(d.get())a.patch.cgl.pixelDensity=window.devicePixelRatio;const t=performance.now();a.patch.config.fpsLimit=E();if(p.canvasWidth==-1){p.setCanvas(a.patch.config.glCanvasId);return}if(p.canvasWidth!=o.get()||p.canvasHeight!=r.get()){let e=1;if(g.get()=="CSS")e=a.patch.cgl.pixelDensity;o.set(p.canvasWidth/e);r.set(p.canvasHeight/e)}if(CABLES.now()-x>1e3){CGL.fpsReport=CGL.fpsReport||[];if(a.patch.loading.getProgress()>=1&&x!==0)CGL.fpsReport.push(m);m=0;x=CABLES.now()}CGL.MESH.lastShader=null;CGL.MESH.lastMesh=null;p.renderStart(p,C,T);if(s.get()){p.gl.clearColor(0,0,0,1);p.gl.clear(p.gl.COLOR_BUFFER_BIT|p.gl.DEPTH_BUFFER_BIT)}n.trigger();if(CGL.MESH.lastMesh)CGL.MESH.lastMesh.unBind();if(CGL.Texture.previewTexture){if(!CGL.Texture.texturePreviewer)CGL.Texture.texturePreviewer=new CGL.Texture.texturePreview(p);CGL.Texture.texturePreviewer.render(CGL.Texture.previewTexture)}p.renderEnd(p);a.patch.cg=null;if(c.get()){p.gl.clearColor(1,1,1,1);p.gl.colorMask(false,false,false,true);p.gl.clear(p.gl.COLOR_BUFFER_BIT);p.gl.colorMask(true,true,true,true)}if(!p.frameStore.phong)p.frameStore.phong={};m++;a.patch.cgl.profileData.profileMainloopMs=performance.now()-t}function L(){clearTimeout(h);h=setTimeout(()=>{if(a.patch.getOpsByObjName(a.name).length>1){a.setUiError("multimainloop","there should only be one mainloop op!");if(!v)v=a.patch.addEventListener("onOpDelete",L)}else a.setUiError("multimainloop",null,1)},500)}};Ops.Gl.MainLoop.prototype=new CABLES.Op;CABLES.OPS["b0472a1d-db16-4ba6-8787-f300fbdc77bb"]={f:Ops.Gl.MainLoop,objName:"Ops.Gl.MainLoop"};Ops.Gl.ImageCompose.FastBlur=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={blur_frag:"\nUNI sampler2D tex;\n#ifdef USE_MASK\n    UNI sampler2D texMask;\n#endif\nUNI float amount;\nUNI float pass;\n\nIN vec2 texCoord;\n\nUNI float dirX;\nUNI float dirY;\nUNI float width;\nUNI float height;\n\nIN vec2 coord0;\nIN vec2 coord1;\nIN vec2 coord2;\nIN vec2 coord3;\nIN vec2 coord4;\nIN vec2 coord5;\nIN vec2 coord6;\n\n#ifdef HAS_MASK\n    UNI sampler2D imageMask;\n#endif\n\nvoid main()\n{\n    vec4 color = vec4(0.0);\n\n    #ifdef USE_MASK\n        #ifdef MASK_INVERT\n            if(texture(texMask,texCoord).r<0.5)\n            {\n                outColor= texture(tex, texCoord);\n                return;\n            }\n        #endif\n\n        #ifndef MASK_INVERT\n            if(texture(texMask,texCoord).r>0.5)\n            {\n                outColor= texture(tex, texCoord);\n                return;\n            }\n        #endif\n    #endif\n\n    color += texture(tex, coord0) * 0.06927096443792478;\n    color += texture(tex, coord1) * 0.1383328848652136;\n    color += texture(tex, coord2) * 0.21920904690397863;\n    color += texture(tex, coord3) * 0.14637421;\n    color += texture(tex, coord4) * 0.21920904690397863;\n    color += texture(tex, coord5) * 0.1383328848652136;\n    color += texture(tex, coord6) * 0.06927096443795711;\n\n    color.a=1.0;\n    outColor= color;\n}",blur_vert:"\nIN vec3 vPosition;\nIN vec2 attrTexCoord;\nIN vec3 attrVertNormal;\nOUT vec2 texCoord;\nOUT vec3 norm;\nUNI mat4 projMatrix;\nUNI mat4 mvMatrix;\nUNI mat4 modelMatrix;\n\nUNI float pass;\nUNI float dirX;\nUNI float dirY;\nUNI float width;\nUNI float height;\n\nOUT vec2 coord0;\nOUT vec2 coord1;\nOUT vec2 coord2;\nOUT vec2 coord3;\nOUT vec2 coord4;\nOUT vec2 coord5;\nOUT vec2 coord6;\n\n// http://dev.theomader.com/gaussian-kernel-calculator/\n// http://rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling/\n\n\nvoid main()\n{\n    texCoord=attrTexCoord;\n    norm=attrVertNormal;\n    vec4 pos=vec4(vPosition,  1.0);\n    {{MODULE_VERTEX_POSITION}}\n\n    vec2 dir=vec2(dirX,dirY);\n    vec2 res=vec2( (1.) / width , (1.) / height )*dir;\n\n    coord3= attrTexCoord;\n\n    coord0= attrTexCoord + (-3.0368997744118595 * res);\n    coord1= attrTexCoord + (-2.089778445362373 * res);\n    coord2= attrTexCoord + (-1.2004366090034069 * res);\n    coord4= attrTexCoord + (1.2004366090034069 * res);\n    coord5= attrTexCoord + (2.089778445362373* res);\n    coord6= attrTexCoord + (3.0368997744118595 * res);\n\n    #ifdef CLAMP\n        coord0=clamp(coord0,0.0,1.0);\n        coord1=clamp(coord1,0.0,1.0);\n        coord2=clamp(coord2,0.0,1.0);\n        coord3=clamp(coord3,0.0,1.0);\n        coord4=clamp(coord4,0.0,1.0);\n        coord5=clamp(coord5,0.0,1.0);\n        coord6=clamp(coord6,0.0,1.0);\n    #endif\n\n    gl_Position = projMatrix * mvMatrix * pos;\n}\n"};const n=e.inTrigger("render"),a=e.outTrigger("trigger"),o=e.inFloat("amount",3),r=e.inBool("Clamp",false),i=e.inBool("Mask Invert",false),l=e.inTexture("Mask");const s=e.patch.cgl;const c=new CGL.Shader(s,"fastblur");c.setSource(t.blur_vert,t.blur_frag);const f=new CGL.Uniform(c,"t","tex",0),u=new CGL.Uniform(c,"f","dirX",0),d=new CGL.Uniform(c,"f","dirY",0),g=new CGL.Uniform(c,"f","width",0),p=new CGL.Uniform(c,"f","height",0),m=new CGL.Uniform(c,"f","pass",0),x=new CGL.Uniform(c,"f","amount",o.get()),h=new CGL.Uniform(c,"t","texMask",1);o.onChange=()=>{x.setValue(o.get())};const v=e.inDropDown("direction",["both","vertical","horizontal"]);let C=0;v.set("both");v.onChange=()=>{if(v.get()=="both")C=0;if(v.get()=="horizontal")C=1;if(v.get()=="vertical")C=2};r.onChange=()=>{c.toggleDefine("CLAMP",r.get())};i.onChange=l.onChange=()=>{c.toggleDefine("USE_MASK",l.isLinked());c.toggleDefine("MASK_INVERT",i.get())};n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(e))return;g.setValue(s.currentTextureEffect.getCurrentSourceTexture().width);p.setValue(s.currentTextureEffect.getCurrentSourceTexture().height);const t=o.get();if(l.get())s.setTexture(1,l.get().tex);for(let e=0;e<t;e++){s.pushShader(c);m.setValue(e/t);if(C===0||C==2){s.currentTextureEffect.bind();s.setTexture(0,s.currentTextureEffect.getCurrentSourceTexture().tex);u.setValue(0);d.setValue(1+e*e);s.currentTextureEffect.finish()}if(C===0||C==1){s.currentTextureEffect.bind();s.setTexture(0,s.currentTextureEffect.getCurrentSourceTexture().tex);u.setValue(1+e*e);d.setValue(0);s.currentTextureEffect.finish()}s.popShader()}a.trigger()}};Ops.Gl.ImageCompose.FastBlur.prototype=new CABLES.Op;CABLES.OPS["720ca148-dcf7-433b-bb1f-edbfb7433c6c"]={f:Ops.Gl.ImageCompose.FastBlur,objName:"Ops.Gl.ImageCompose.FastBlur"};Ops.Devices.Mouse.Mouse_v2=function(){CABLES.Op.apply(this,arguments);const e=this;const w=e.attachments={};const t=e.inValueBool("Active",true),n=e.inValueBool("relative"),o=e.inValueBool("normalize"),a=e.inValueBool("flip y",true),r=e.inValueSelect("Area",["Canvas","Document","Parent Element"],"Canvas"),i=e.inBool("right click prevent default",true),l=e.inValueBool("Touch support",true),s=e.inValueBool("smooth"),c=e.inValueFloat("smoothSpeed",20),f=e.inValueFloat("multiply",1),u=e.outNumber("x",0),d=e.outNumber("y",0),g=e.outBoolNum("button down"),B=e.outTrigger("click"),F=e.outTrigger("Button Up"),D=e.outTrigger("click right"),p=e.outBoolNum("mouseOver"),m=e.outNumber("button");e.setPortGroup("Behavior",[n,o,a,r,i,l]);e.setPortGroup("Smoothing",[s,c,f]);let x=0;const h=e.patch.cgl;let v=null;function C(n,a){if(o.get()){let e=h.canvas.width/h.pixelDensity;let t=h.canvas.height/h.pixelDensity;if(v==document.body){e=v.clientWidth/h.pixelDensity;t=v.clientHeight/h.pixelDensity}u.set(((n||0)/e*2-1)*f.get());d.set(((a||0)/t*2-1)*f.get())}else{u.set((n||0)*f.get());d.set((a||0)*f.get())}}s.onChange=function(){if(s.get())x=setInterval(X,5);else if(x)clearTimeout(x)};let V,z;let T=0,b=0;o.onChange=function(){A=0;_=0;C(A,_)};let A=h.canvas.width/2;let _=h.canvas.height/2;T=A;b=_;u.set(A);d.set(_);let E=0;let S=0;let O=0;let L=0;N();r.onChange=N;let I=0;function X(){I=c.get();if(I<=0)I=.01;const e=Math.abs(A-T);const t=Math.round(e/I,0);T=T<A?T+t:T-t;const n=Math.abs(_-b);const a=Math.round(n/I,0);b=b<_?b+a:b-a;C(T,b)}function P(e){g.set(false);p.set(true);I=c.get()}function M(e){m.set(e.which);g.set(true)}function R(e){m.set(0);g.set(false);F.trigger()}function G(e){D.trigger();if(i.get())e.preventDefault()}function y(e){B.trigger()}function k(e){E=0;S=0;I=100;p.set(false);g.set(false)}n.onChange=function(){O=0;L=0};function j(e){if(!n.get()){if(r.get()!="Document"){O=e.offsetX;L=e.offsetY}else{O=e.clientX;L=e.clientY}if(s.get()){A=O;if(a.get())_=v.clientHeight-L;else _=L}else{if(a.get())C(O,v.clientHeight-L);else C(O,L)}}else{if(E!=0&&S!=0){O=e.offsetX-E;L=e.offsetY-S}else{}E=e.offsetX;S=e.offsetY;A+=O;_+=L;if(_>460)_=460}}function H(e){p.set(true);j(e)}function Y(e){if(event.touches&&event.touches.length>0)j(e.touches[0])}function W(e){g.set(true);if(e.touches&&e.touches.length>0)M(e.touches[0])}function q(e){g.set(false);R()}l.onChange=function(){U();N()};function U(){if(!v)return;v.removeEventListener("touchend",q);v.removeEventListener("touchstart",W);v.removeEventListener("touchmove",Y);v.removeEventListener("click",y);v.removeEventListener("mousemove",H);v.removeEventListener("mouseleave",k);v.removeEventListener("mousedown",M);v.removeEventListener("mouseup",R);v.removeEventListener("mouseenter",P);v.removeEventListener("contextmenu",G);v=null}function N(){if(v||!t.get())U();if(!t.get())return;v=h.canvas;if(r.get()=="Document")v=document.body;if(r.get()=="Parent Element")v=h.canvas.parentElement;if(l.get()){v.addEventListener("touchend",q);v.addEventListener("touchstart",W);v.addEventListener("touchmove",Y)}v.addEventListener("mousemove",H);v.addEventListener("mouseleave",k);v.addEventListener("mousedown",M);v.addEventListener("mouseup",R);v.addEventListener("mouseenter",P);v.addEventListener("contextmenu",G);v.addEventListener("click",y)}t.onChange=function(){if(v)U();if(t.get())N()};e.onDelete=function(){U()};N()};Ops.Devices.Mouse.Mouse_v2.prototype=new CABLES.Op;CABLES.OPS["9fa3fc46-3147-4e3a-8ee8-a93ea9e8786e"]={f:Ops.Devices.Mouse.Mouse_v2,objName:"Ops.Devices.Mouse.Mouse_v2"};Ops.Gl.Matrix.ScreenPosTo3d_v3=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={};const n=e.inTrigger("Exec"),o=e.inValue("X"),r=e.inValue("Y"),a=e.inSwitch("Input Type",["Pixel","-1 to 1"],"Pixel"),i=e.outTrigger("Trigger out"),l=e.outNumber("Result X"),s=e.outNumber("Result Y");const c=mat4.create();const f=e.patch.cgl;n.onTriggered=d;let u=0;a.onChange=()=>{if(a.get()=="Pixel")u=0;else if(a.get()=="-1 to 1")u=1};function d(){let e=0;let t=0;let n=f.canvas.clientWidth/f.canvas.clientHeight;if(u===0){e=2*o.get()/f.canvas.clientWidth-1;t=-2*r.get()/f.canvas.clientHeight+1}else if(u===1){e=o.get();t=r.get()}let a=vec3.fromValues(e,t,0);mat4.mul(c,f.pMatrix,f.vMatrix);mat4.invert(c,c);vec3.transformMat4(a,a,c);l.set(a[0]*10);s.set(a[1]*10);i.trigger()}};Ops.Gl.Matrix.ScreenPosTo3d_v3.prototype=new CABLES.Op;CABLES.OPS["48d72532-afa6-40c9-a895-00a43635a94b"]={f:Ops.Gl.Matrix.ScreenPosTo3d_v3,objName:"Ops.Gl.Matrix.ScreenPosTo3d_v3"};Ops.Gl.ImageCompose.PixelDisplacement_v3=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={pixeldisplace3_frag:"IN vec2 texCoord;\nUNI sampler2D tex;\nUNI sampler2D displaceTex;\nUNI float amountX;\nUNI float amountY;\nUNI float amount;\n\n{{CGL.BLENDMODES}}\n\nvec3 getOffset(vec3 offset)\n{\n    #ifdef ZERO_BLACK\n        return offset;\n    #endif\n\n    #ifdef ZERO_GREY\n        return offset*2.0-1.0;\n    #endif\n}\n\nfloat getOffset(float offset)\n{\n    #ifdef ZERO_BLACK\n        return offset;\n    #endif\n\n    #ifdef ZERO_GREY\n        return offset*2.0-1.0;\n    #endif\n}\n\nvoid main()\n{\n    vec3 offset=texture(displaceTex,texCoord).rgb;\n    float x,y;\n\n    #ifdef INPUT_REDGREEN\n        offset=getOffset(offset);\n        x=offset.r*amountX+texCoord.x;\n        y=offset.g*amountY+texCoord.y;\n    #endif\n    #ifdef INPUT_RED\n        offset=getOffset(offset);\n        x=offset.r*amountX+texCoord.x;\n        y=offset.r*amountY+texCoord.y;\n    #endif\n    #ifdef INPUT_GREEN\n        offset=getOffset(offset);\n        x=offset.g*amountX+texCoord.x;\n        y=offset.g*amountY+texCoord.y;\n    #endif\n    #ifdef INPUT_BLUE\n        offset=getOffset(offset);\n        x=offset.b*amountX+texCoord.x;\n        y=offset.b*amountY+texCoord.y;\n    #endif\n    #ifdef INPUT_LUMINANCE\n        float o=dot(vec3(0.2126,0.7152,0.0722), offset);\n        o=getOffset(o);\n        x=o*amountX+texCoord.x;\n        y=o*amountY+texCoord.y;\n    #endif\n    #ifdef WRAP_CLAMP\n        x=clamp(x,0.0,1.0);\n        y=clamp(y,0.0,1.0);\n    #endif\n    #ifdef WRAP_REPEAT\n        x=mod(x,1.0);\n        y=mod(y,1.0);\n    #endif\n    #ifdef WRAP_MIRROR\n        float mx=mod(x,2.0);\n        float my=mod(y,2.0);\n        x=abs((floor(mx)-fract(mx)));\n        y=abs((floor(my)-fract(my)));\n    #endif\n\n\n\n    vec4 col=texture(tex,vec2(x,y));\n    vec4 base=texture(tex,texCoord);\n\n    outColor=cgl_blend(base,col,amount);\n}"};const n=e.inTrigger("render"),a=e.inTexture("displaceTex"),o=CGL.TextureEffect.AddBlendSelect(e,"Blend Mode","normal"),r=e.inValueSlider("Amount",1),i=e.inValueSlider("amount X",.2),l=e.inValueSlider("amount Y",.2),s=e.inSwitch("Wrap",["Mirror","Clamp","Repeat"],"Mirror"),c=e.inValueSelect("Input",["Luminance","RedGreen","Red","Green","Blue"],"Luminance"),f=e.inSwitch("Zero Displace",["Grey","Black"],"Grey"),u=e.outTrigger("trigger");e.setPortGroup("Axis Displacement Strength",[i,l]);e.setPortGroup("Modes",[s,c]);e.toWorkPortsNeedToBeLinked(a);const d=e.patch.cgl,g=new CGL.Shader(d,e.name,e);g.setSource(g.getDefaultVertexShader(),t.pixeldisplace3_frag);const p=new CGL.Uniform(g,"t","tex",0),m=new CGL.Uniform(g,"t","displaceTex",1),x=new CGL.Uniform(g,"f","amountX",i),h=new CGL.Uniform(g,"f","amountY",l),v=new CGL.Uniform(g,"f","amount",r);f.onChange=C;s.onChange=T;c.onChange=b;T();b();C();CGL.TextureEffect.setupBlending(e,g,o,r);function C(){g.removeDefine("ZERO_BLACK");g.removeDefine("ZERO_GREY");g.define("ZERO_"+(f.get()+"").toUpperCase())}function T(){g.removeDefine("WRAP_CLAMP");g.removeDefine("WRAP_REPEAT");g.removeDefine("WRAP_MIRROR");g.define("WRAP_"+(s.get()+"").toUpperCase())}function b(){g.removeDefine("INPUT_LUMINANCE");g.removeDefine("INPUT_REDGREEN");g.removeDefine("INPUT_RED");g.define("INPUT_"+(c.get()+"").toUpperCase())}n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(e))return;d.pushShader(g);d.currentTextureEffect.bind();d.setTexture(0,d.currentTextureEffect.getCurrentSourceTexture().tex);if(a.get())d.setTexture(1,a.get().tex);d.currentTextureEffect.finish();d.popShader();u.trigger()}};Ops.Gl.ImageCompose.PixelDisplacement_v3.prototype=new CABLES.Op;CABLES.OPS["c089646e-9324-48b2-8b32-81240408222e"]={f:Ops.Gl.ImageCompose.PixelDisplacement_v3,objName:"Ops.Gl.ImageCompose.PixelDisplacement_v3"};Ops.Gl.Texture_v2=function(){CABLES.Op.apply(this,arguments);const o=this;const e=o.attachments={};const r=o.inUrl("File",[".jpg",".png",".webp",".jpeg",".avif"]),t=o.inSwitch("Filter",["nearest","linear","mipmap"]),n=o.inValueSelect("Wrap",["repeat","mirrored repeat","clamp to edge"],"clamp to edge"),a=o.inSwitch("Anisotropic",["0","1","2","4","8","16"],"0"),i=o.inSwitch("Data Format",["R","RG","RGB","RGBA","SRGBA"],"RGBA"),l=o.inValueBool("Flip",false),s=o.inValueBool("Pre Multiplied Alpha",false),c=o.inValueBool("Active",true),f=o.inBool("Save Memory",true),u=o.outTexture("Texture"),d=o.inBool("Add Cachebuster",false),g=o.inTriggerButton("Reload"),p=o.outNumber("Width"),m=o.outNumber("Height"),x=o.outNumber("Aspect Ratio"),h=o.outBoolNum("Loaded",0),v=o.outBoolNum("Loading",0);const C=o.patch.cgl;o.toWorkPortsNeedToBeLinked(u);o.setPortGroup("Size",[p,m]);let T=null;let b=null;let A=null;let _=CGL.Texture.FILTER_MIPMAP;let E=CGL.Texture.WRAP_REPEAT;let S=0;let O=0;s.setUiAttribs({hidePort:true});s.onChange=r.onChange=i.onChange=d.onChange=l.onChange=I;a.onChange=t.onChange=R;n.onChange=G;t.set("mipmap");n.set("repeat");u.set(CGL.Texture.getEmptyTexture(C));g.onTriggered=I;c.onChange=function(){if(c.get()){if(T!=r.get()||!A)I();else u.set(A)}else{u.set(CGL.Texture.getEmptyTexture(C));p.set(CGL.Texture.getEmptyTexture(C).width);m.set(CGL.Texture.getEmptyTexture(C).height);if(A)A.delete();o.setUiAttrib({extendTitle:""});A=null}};const L=function(){const e=CGL.Texture.getTempTexture(C);u.set(e)};function I(e){clearTimeout(O);O=setTimeout(function(){M(e)},1)}function P(){if(i.get()=="R")return CGL.Texture.PFORMATSTR_R8UB;if(i.get()=="RG")return CGL.Texture.PFORMATSTR_RG8UB;if(i.get()=="RGB")return CGL.Texture.PFORMATSTR_RGB8UB;if(i.get()=="SRGBA")return CGL.Texture.PFORMATSTR_SRGBA8;return CGL.Texture.PFORMATSTR_RGBA8UB}function M(e){o.checkMainloopExists();if(!c.get())return;if(b)b=C.patch.loading.finished(b);b=C.patch.loading.start(o.objName,r.get(),o);let t=o.patch.getFilePath(String(r.get()));if(d.get()||e===true)t=CABLES.cacheBust(t);if(String(r.get()).indexOf("data:")==0)t=r.get();let n=false;T=r.get();if(r.get()&&r.get().length>1){h.set(false);v.set(true);const a=r.get();o.setUiAttrib({extendTitle:CABLES.basename(t)});if(n)o.refreshParams();C.patch.loading.addAssetLoadingTask(()=>{o.setUiError("urlerror",null);CGL.Texture.load(C,t,function(e,t){C.checkFrameStarted("texture inittexture");if(r.get()!=a){b=C.patch.loading.finished(b);return}if(A)A.delete();if(e){const n=CGL.Texture.getErrorTexture(C);u.setRef(n);o.setUiError("urlerror",'could not load texture: "'+r.get()+'"',2);b=C.patch.loading.finished(b);return}p.set(t.width);m.set(t.height);x.set(t.width/t.height);A=t;u.setRef(A);v.set(false);h.set(true);if(f.get())A.image=null;if(b){b=C.patch.loading.finished(b)}o.checkMainloopExists()},{anisotropic:S,wrap:E,flip:l.get(),unpackAlpha:s.get(),pixelFormat:P(),filter:_});o.checkMainloopExists()})}else{L();b=C.patch.loading.finished(b)}}function R(){if(t.get()=="nearest")_=CGL.Texture.FILTER_NEAREST;else if(t.get()=="linear")_=CGL.Texture.FILTER_LINEAR;else if(t.get()=="mipmap")_=CGL.Texture.FILTER_MIPMAP;else if(t.get()=="Anisotropic")_=CGL.Texture.FILTER_ANISOTROPIC;a.setUiAttribs({greyout:_!=CGL.Texture.FILTER_MIPMAP});S=parseFloat(a.get());I()}function G(){if(n.get()=="repeat")E=CGL.Texture.WRAP_REPEAT;if(n.get()=="mirrored repeat")E=CGL.Texture.WRAP_MIRRORED_REPEAT;if(n.get()=="clamp to edge")E=CGL.Texture.WRAP_CLAMP_TO_EDGE;I()}o.onFileChanged=function(e){if(r.get()&&r.get().indexOf(e)>-1){u.set(CGL.Texture.getEmptyTexture(o.patch.cgl));u.set(CGL.Texture.getTempTexture(C));M(true)}}};Ops.Gl.Texture_v2.prototype=new CABLES.Op;CABLES.OPS["790f3702-9833-464e-8e37-6f0f813f7e16"]={f:Ops.Gl.Texture_v2,objName:"Ops.Gl.Texture_v2"};Ops.Ui.VizTexture=function(){CABLES.Op.apply(this,arguments);const w=this;const n=w.attachments={viztex_frag:"IN vec2 texCoord;\nUNI sampler2D tex;\nUNI samplerCube cubeMap;\nUNI float width;\nUNI float height;\nUNI float type;\nUNI float time;\n\nfloat LinearizeDepth(float d,float zNear,float zFar)\n{\n    float z_n = 2.0 * d - 1.0;\n    return 2.0 * zNear / (zFar + zNear - z_n * (zFar - zNear));\n}\n\nvoid main()\n{\n    vec4 col=vec4(vec3(0.),0.0);\n\n    vec4 colTex=texture(tex,texCoord);\n\n\n\n    if(type==1.0)\n    {\n        vec4 depth=vec4(0.);\n        vec2 localST=texCoord;\n        localST.y = 1. - localST.y;\n\n        localST.t = mod(localST.t*3.,1.);\n        localST.s = mod(localST.s*4.,1.);\n\n        #ifdef WEBGL2\n            #define texCube texture\n        #endif\n        #ifdef WEBGL1\n            #define texCube textureCube\n        #endif\n\n//         //Due to the way my depth-cubeMap is rendered, objects to the -x,y,z side is projected to the positive x,y,z side\n//         //Inside where top/bottom is to be drawn?\n        if (texCoord.s*4.> 1. && texCoord.s*4.<2.)\n        {\n            //Bottom (-y) quad\n            if (texCoord.t*3. < 1.)\n            {\n                vec3 dir=vec3(localST.s*2.-1.,-1.,-localST.t*2.+1.);//Due to the (arbitrary) way I choose as up in my depth-viewmatrix, i her emultiply the latter coordinate with -1\n                depth = texCube(cubeMap, dir);\n            }\n            //top (+y) quad\n            else if (texCoord.t*3. > 2.)\n            {\n                vec3 dir=vec3(localST.s*2.-1.,1.,localST.t*2.-1.);//Get lower y texture, which is projected to the +y part of my cubeMap\n                depth = texCube(cubeMap, dir);\n            }\n            else//Front (-z) quad\n            {\n                vec3 dir=vec3(localST.s*2.-1.,-localST.t*2.+1.,1.);\n                depth = texCube(cubeMap, dir);\n            }\n        }\n//         //If not, only these ranges should be drawn\n        else if (texCoord.t*3. > 1. && texCoord.t*3. < 2.)\n        {\n            if (texCoord.x*4. < 1.)//left (-x) quad\n            {\n                vec3 dir=vec3(-1.,-localST.t*2.+1.,localST.s*2.-1.);\n                depth = texCube(cubeMap, dir);\n            }\n            else if (texCoord.x*4. < 3.)//right (+x) quad (front was done above)\n            {\n                vec3 dir=vec3(1,-localST.t*2.+1.,-localST.s*2.+1.);\n                depth = texCube(cubeMap, dir);\n            }\n            else //back (+z) quad\n            {\n                vec3 dir=vec3(-localST.s*2.+1.,-localST.t*2.+1.,-1.);\n                depth = texCube(cubeMap, dir);\n            }\n        }\n        // colTex = vec4(vec3(depth),1.);\n        colTex = vec4(depth);\n    }\n\n    if(type==2.0)\n    {\n       float near = 0.1;\n       float far = 50.;\n       float depth = LinearizeDepth(colTex.r, near, far);\n       colTex.rgb = vec3(depth);\n    }\n\n\n\n\n    #ifdef ANIM_RANGE\n\n        if(colTex.r>1.0 || colTex.r<0.0)\n            colTex.r=mod(colTex.r,1.0)*0.5+(sin(colTex.r+mod(colTex.r*3.0,1.0)+time*5.0)*0.5+0.5)*0.5;\n        if(colTex.g>1.0 || colTex.g<0.0)\n            colTex.g=mod(colTex.g,1.0)*0.5+(sin(colTex.g+mod(colTex.g*3.0,1.0)+time*5.0)*0.5+0.5)*0.5;\n        if(colTex.b>1.0 || colTex.b<0.0)\n            colTex.b=mod(colTex.b,1.0)*0.5+(sin(colTex.b+mod(colTex.b*3.0,1.0)+time*5.0)*0.5+0.5)*0.5;\n\n    #endif\n\n\n    // #ifdef ANIM_RANGE\n    //     if(colTex.r>1.0 || colTex.r<0.0)\n    //     {\n    //         float r=mod( time+colTex.r,1.0)*0.5+0.5;\n    //         colTex.r=r;\n    //     }\n    //     if(colTex.g>1.0 || colTex.g<0.0)\n    //     {\n    //         float r=mod( time+colTex.g,1.0)*0.5+0.5;\n    //         colTex.g=r;\n    //     }\n    //     if(colTex.b>1.0 || colTex.b<0.0)\n    //     {\n    //         float r=mod( time+colTex.b,1.0)*0.5+0.5;\n    //         colTex.b=r;\n    //     }\n    // #endif\n\n    #ifdef MOD_RANGE\n        colTex.r=mod(colTex.r,1.0001);\n        colTex.g=mod(colTex.g,1.0001);\n        colTex.b=mod(colTex.b,1.0001);\n\n    #endif\n\n    #ifdef ALPHA_ONE\n        colTex.a=1.0;\n    #endif\n    #ifdef ALPHA_INV\n        colTex.a=1.0-colTex.a;\n    #endif\n\n    outColor = mix(col,colTex,colTex.a);\n}\n\n",viztex_vert:"IN vec3 vPosition;\nIN vec2 attrTexCoord;\nOUT vec2 texCoord;\nUNI mat4 projMatrix;\nUNI mat4 modelMatrix;\nUNI mat4 viewMatrix;\n\nvoid main()\n{\n    texCoord=vec2(attrTexCoord.x,1.0-attrTexCoord.y);\n    vec4 pos = vec4( vPosition, 1. );\n    mat4 mvMatrix=viewMatrix * modelMatrix;\n    gl_Position = projMatrix * mvMatrix * pos;\n}"};const B=w.inTexture("Texture In"),F=w.inBool("Show Info",false),e=w.inSwitch("Visualize outside 0-1",["Off","Anim","Modulo"],"Anim"),t=w.inSwitch("Alpha",["A","1","1-A"],"A"),D=w.inBool("Show Color",false),V=w.inFloatSlider("X",.5),z=w.inFloatSlider("Y",.5),a=w.outTexture("Texture Out"),X=w.outString("Info");w.setUiAttrib({height:150,resizable:true});const k=new CABLES.Timer;let o=null;let j=null;let H=null;let Y="";let r=true;t.onChange=e.onChange=l;D.onChange=i;i();if(CABLES.UI){k.play()}function i(){V.setUiAttribs({greyout:!D.get()});z.setUiAttribs({greyout:!D.get()})}B.onChange=()=>{const e=B.get();a.setRef(e);let t="";if(B.get()&&B.isLinked())t=B.links[0].getOtherPort(B).name;w.setUiAttrib({extendTitle:t})};function l(){if(!o)return;o.toggleDefine("MOD_RANGE",e.get()=="Modulo");o.toggleDefine("ANIM_RANGE",e.get()=="Anim");o.toggleDefine("ALPHA_INV",t.get()=="1-A");o.toggleDefine("ALPHA_ONE",t.get()=="1")}w.renderVizLayerGl=(f,u)=>{if(!B.isLinked())return;if(!u.useGl)return;const d=B;const g=5;const p=g+1;const e=CABLES.UI.uiProfiler.start("previewlayer texture");const m=d.op.patch.cgl;if(!this._emptyCubemap)this._emptyCubemap=CGL.Texture.getEmptyCubemapTexture(m);d.op.patch.cgl.profileData.profileTexPreviews++;const x=d.get()||CGL.Texture.getEmptyTexture(m);if(!this._mesh){const t=new CGL.Geometry("vizTexture rect");t.vertices=[1,1,0,-1,1,0,1,-1,0,-1,-1,0];t.texCoords=[1,1,0,1,1,0,0,0];t.verticesIndices=[0,1,2,3,1,2];this._mesh=new CGL.Mesh(m,t)}if(!this._shader){this._shader=new CGL.Shader(m,"glpreviewtex");this._shader.setModules(["MODULE_VERTEX_POSITION","MODULE_COLOR","MODULE_BEGIN_FRAG"]);this._shader.setSource(n.viztex_vert,n.viztex_frag);this._shaderTexUniform=new CGL.Uniform(this._shader,"t","tex",g);this._shaderTexCubemapUniform=new CGL.Uniform(this._shader,"tc","cubeMap",p);o=this._shader;l();this._shaderTexUniformW=new CGL.Uniform(this._shader,"f","width",x.width);this._shaderTexUniformH=new CGL.Uniform(this._shader,"f","height",x.height);this._shaderTypeUniform=new CGL.Uniform(this._shader,"f","type",0);this._shaderTimeUniform=new CGL.Uniform(this._shader,"f","time",0)}m.pushPMatrix();const h=[x.width,x.height];const v=d.op.patch.cgl.canvasWidth>h[0]&&d.op.patch.cgl.canvasHeight>h[1];if(v){mat4.ortho(m.pMatrix,0,d.op.patch.cgl.canvasWidth,d.op.patch.cgl.canvasHeight,0,.001,11)}else mat4.ortho(m.pMatrix,-1,1,1,-1,.001,11);const C=m.getTexture(g);const T=m.getTexture(p);let b=0;if(x){if(x.cubemap)b=1;if(x.textureType==CGL.Texture.TYPE_DEPTH)b=2;if(b==0||b==2){m.setTexture(g,x.tex);m.setTexture(p,this._emptyCubemap.cubemap,m.gl.TEXTURE_CUBE_MAP)}else if(b==1){m.setTexture(p,x.cubemap,m.gl.TEXTURE_CUBE_MAP)}k.update();this._shaderTimeUniform.setValue(k.get());this._shaderTypeUniform.setValue(b);let t=[d.op.patch.cgl.canvasWidth,d.op.patch.cgl.canvasHeight];m.gl.clearColor(0,0,0,0);m.gl.clear(m.gl.COLOR_BUFFER_BIT|m.gl.DEPTH_BUFFER_BIT);m.pushModelMatrix();if(v){t=h;mat4.translate(m.mMatrix,m.mMatrix,[h[0]/2,h[1]/2,0]);mat4.scale(m.mMatrix,m.mMatrix,[h[0]/2,h[1]/2,0])}this._mesh.render(this._shader);m.popModelMatrix();if(b==0)m.setTexture(g,C);if(b==1)m.setTexture(p,T);m.popPMatrix();m.resetViewPort();const A=[u.width,u.height];const _=false;if(x.width>x.height)A[1]=u.width*h[1]/h[0];else{A[1]=u.width*(h[1]/h[0]);if(A[1]>u.height){const L=u.height/A[1];A[0]*=L;A[1]*=L}}const E=A[0]>h[0]&&A[1]>h[1];f.imageSmoothingEnabled=true;f.fillStyle="#ffffff";f.fillRect(u.x,u.y-10,10,10);f.fillStyle="#000000";f.fillRect(u.x,u.y-10,5,5);f.fillRect(u.x+5,u.y-10+5,5,5);let e=u.height;let n=10*u.width/e;let a=e/10;let o=u.width/n;for(let t=0;t<n;t++)for(let e=0;e<10;e++){if((t+e)%2==0)f.fillStyle="#333333";else f.fillStyle="#393939";f.fillRect(u.x+o*t,u.y+a*e,o,a)}f.fillStyle="#222";const S=(u.width-A[0])/2;const O=(e-A[1])/2;let r=u.x+(u.width-A[0])/2;let i=u.y+(e-A[1])/2;let l=A[0];let s=A[1];if(e-A[1]<0){r=u.x+(u.width-A[0]*e/A[1])/2;i=u.y;l=A[0]*e/A[1];s=e}f.fillRect(u.x,u.y,r-u.x,e);f.fillRect(u.x+l+r-u.x,u.y,l,e);f.fillRect(u.x,u.y,u.width,O);f.fillRect(u.x,u.y+A[1]+O,u.width,O);if(m.canvas&&m.canvasWidth>0&&m.canvasHeight>0&&m.canvas.width>0&&m.canvas.height>0){try{const I=l/t[0]>3||s/t[1]>3;const P=l/t[0]>10||s/t[1]>10;if(h[1]==1){f.imageSmoothingEnabled=false;f.drawImage(m.canvas,0,0,t[0],t[1],u.x,u.y,u.width,e);f.imageSmoothingEnabled=true}else if(h[0]==1){f.imageSmoothingEnabled=false;f.drawImage(m.canvas,0,0,t[0],t[1],u.x,u.y,u.width,e);f.imageSmoothingEnabled=true}else if(A[0]!=0&&A[1]!=0&&u.width!=0&&e!=0&&l!=0&&s!=0){f.imageSmoothingEnabled=!I;f.drawImage(m.canvas,0,0,t[0],t[1],r,i,l,s)}if(P){const M=l/t[0];const R=s/t[1];f.imageSmoothingEnabled=true;f.lineWidth=1;f.globalAlpha=.5;f.beginPath();for(let e=0;e<=t[0];e++){f.moveTo(r+e*M,i);f.lineTo(r+e*M,i+s)}for(let e=0;e<=t[1];e++){f.moveTo(r,i+e*R);f.lineTo(r+l,i+e*R)}f.strokeStyle="#555";f.stroke();f.globalAlpha=1}}catch(e){console.error("canvas drawimage exception...",e)}}let c="";if(F.get()){if(d.get()&&d.get().getInfoOneLine)c+=d.get().getInfoOneLine()+"\n"}if(D.get()){c+=Y+"\n";const G=r+l*V.get();const y=i+s*z.get();f.fillStyle="#000";f.fillRect(G-1,y-10,3,20);f.fillRect(G,y-1,20,3);f.fillStyle="#fff";f.fillRect(G-1,y-10,1,20);f.fillRect(G-10,y-1,20,1)}w.setUiAttrib({comment:c});X.set(c);if(D.get()){const U=m.gl;const N=B.get();if(!N){Y="";return}if(!j)j=U.createFramebuffer();if(!H)H=new CGL.PixelReader;U.bindFramebuffer(U.FRAMEBUFFER,j);U.framebufferTexture2D(U.FRAMEBUFFER,U.COLOR_ATTACHMENT0,U.TEXTURE_2D,N.tex,0);U.bindFramebuffer(U.FRAMEBUFFER,null);H.read(m,j,N.pixelFormat,V.get()*N.width,N.height-z.get()*N.height,1,1,e=>{if(!CGL.Texture.isPixelFormatFloat(N.pixelFormat)){Y="Pixel Float: "+Math.floor(e[0]/255*100)/100;if(!isNaN(e[1]))Y+=", "+Math.floor(e[1]/255*100)/100;if(!isNaN(e[2]))Y+=", "+Math.floor(e[2]/255*100)/100;if(!isNaN(e[3]))Y+=", "+Math.floor(e[3]/255*100)/100;Y+="\n";if(N.pixelFormat.indexOf("ubyte")>0){Y+="Pixel UByte: ";Y+=Math.round(e[0]);if(!isNaN(e[1]))Y+=", "+Math.round(e[1]);if(!isNaN(e[2]))Y+=", "+Math.round(e[2]);if(!isNaN(e[3]))Y+=", "+Math.round(e[3]);Y+="\n"}}else{Y="Pixel Float: "+Math.round(e[0]*100)/100+", "+Math.round(e[1]*100)/100+", "+Math.round(e[2]*100)/100+", "+Math.round(e[3]*100)/100;Y+="\n"}})}}m.gl.clearColor(0,0,0,0);m.gl.clear(m.gl.COLOR_BUFFER_BIT|m.gl.DEPTH_BUFFER_BIT);e.finish()}};Ops.Ui.VizTexture.prototype=new CABLES.Op;CABLES.OPS["4ea2d7b0-ca74-45db-962b-4d1965ac20c0"]={f:Ops.Ui.VizTexture,objName:"Ops.Ui.VizTexture"};Ops.Gl.ImageCompose.EdgeDetection_v4=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={edgedetect_frag:"IN vec2 texCoord;\nUNI sampler2D tex;\nUNI float amount;\nUNI float width;\nUNI float strength;\nUNI float texWidth;\nUNI float texHeight;\nUNI float mulColor;\n\nconst vec4 lumcoeff = vec4(0.299,0.587,0.114, 0.);\n\nvec3 desaturate(vec3 color)\n{\n    return vec3(dot(vec3(0.2126,0.7152,0.0722), color));\n}\n\n{{CGL.BLENDMODES3}}\n\nvoid main()\n{\n    // vec4 col=vec4(1.0,0.0,0.0,1.0);\n\n    // float pixelX=0.27/texWidth;\n    // float pixelY=0.27/texHeight;\n    float pixelX=(width+0.01)*4.0/texWidth;\n    float pixelY=(width+0.01)*4.0/texHeight;\n\nvec2 tc=texCoord;\n// #ifdef OFFSETPIXEL\n    tc.x+=1.0/texWidth*0.5;\n    tc.y+=1.0/texHeight*0.5;\n// #endif\n    // col=texture(tex,texCoord);\n\n    float count=1.0;\n    vec4 base=texture(tex,texCoord);\n\n\tvec4 horizEdge = vec4( 0.0 );\n\thorizEdge -= texture( tex, vec2( tc.x - pixelX, tc.y - pixelY ) ) * 1.0;\n\thorizEdge -= texture( tex, vec2( tc.x - pixelX, tc.y     ) ) * 2.0;\n\thorizEdge -= texture( tex, vec2( tc.x - pixelX, tc.y + pixelY ) ) * 1.0;\n\thorizEdge += texture( tex, vec2( tc.x + pixelX, tc.y - pixelY ) ) * 1.0;\n\thorizEdge += texture( tex, vec2( tc.x + pixelX, tc.y     ) ) * 2.0;\n\thorizEdge += texture( tex, vec2( tc.x + pixelX, tc.y + pixelY ) ) * 1.0;\n\tvec4 vertEdge = vec4( 0.0 );\n\tvertEdge -= texture( tex, vec2( tc.x - pixelX, tc.y - pixelY ) ) * 1.0;\n\tvertEdge -= texture( tex, vec2( tc.x    , tc.y - pixelY ) ) * 2.0;\n\tvertEdge -= texture( tex, vec2( tc.x + pixelX, tc.y - pixelY ) ) * 1.0;\n\tvertEdge += texture( tex, vec2( tc.x - pixelX, tc.y + pixelY ) ) * 1.0;\n\tvertEdge += texture( tex, vec2( tc.x    , tc.y + pixelY ) ) * 2.0;\n\tvertEdge += texture( tex, vec2( tc.x + pixelX, tc.y + pixelY ) ) * 1.0;\n\n\thorizEdge*=base.a;\n\tvertEdge*=base.a;\n\n\n\tvec3 edge = sqrt((horizEdge.rgb/count * horizEdge.rgb/count) + (vertEdge.rgb/count * vertEdge.rgb/count));\n\n    edge=desaturate(edge);\n    edge*=strength;\n\n    if(mulColor>0.0) edge*=texture( tex, texCoord ).rgb*mulColor*4.0;\n    edge=max(min(edge,1.0),0.0);\n\n    //blend section\n    vec4 col=vec4(edge,base.a);\n\n    outColor=cgl_blendPixel(base,col,amount*base.a);\n}\n\n"};const n=e.inTrigger("Render"),a=CGL.TextureEffect.AddBlendSelect(e,"Blend Mode","normal"),o=e.inValueSlider("Amount",1),r=e.inFloat("Strength",4),i=e.inValueSlider("Width",.1),l=e.inValueSlider("Mul Color",0),s=e.outTrigger("Trigger");const c=e.patch.cgl;const f=new CGL.Shader(c,e.name,e);f.setSource(f.getDefaultVertexShader(),t.edgedetect_frag);const u=new CGL.Uniform(f,"t","tex",0),d=new CGL.Uniform(f,"f","amount",o),g=new CGL.Uniform(f,"f","strength",r),p=new CGL.Uniform(f,"f","width",i),m=new CGL.Uniform(f,"f","texWidth",128),x=new CGL.Uniform(f,"f","texHeight",128),h=new CGL.Uniform(f,"f","mulColor",l);CGL.TextureEffect.setupBlending(e,f,a,o);n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(e,3))return;c.pushShader(f);c.currentTextureEffect.bind();c.setTexture(0,c.currentTextureEffect.getCurrentSourceTexture().tex);m.setValue(c.currentTextureEffect.getCurrentSourceTexture().width);x.setValue(c.currentTextureEffect.getCurrentSourceTexture().height);c.currentTextureEffect.finish();c.popShader();s.trigger()}};Ops.Gl.ImageCompose.EdgeDetection_v4.prototype=new CABLES.Op;CABLES.OPS["0240e26e-b86d-43b2-8c72-6795bb86dc76"]={f:Ops.Gl.ImageCompose.EdgeDetection_v4,objName:"Ops.Gl.ImageCompose.EdgeDetection_v4"};Ops.Gl.ImageCompose.Levels_v2=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={levels_frag:"IN vec2 texCoord;\nUNI sampler2D tex;\nUNI float inMin;\nUNI float inMax;\nUNI float midPoint;\nUNI float outMax;\nUNI float outMin;\n\nvoid main()\n{\n    vec4 baseRGBA=texture(tex,texCoord);\n    vec3 base=baseRGBA.rgb;\n    vec3 inputRange = min(max(base - vec3(inMin), vec3(0.0)) / (vec3(inMax) - vec3(inMin)), vec3(outMax));\n\n    inputRange = pow(inputRange, vec3(1.0 / (1.5 - midPoint)));\n\n    outColor= vec4(mix(vec3(outMin), vec3(1.0), inputRange) ,baseRGBA.a);\n}"};const n=e.inTrigger("Render"),a=e.inValueSlider("In Min",0),o=e.inValueSlider("Midpoint",.5),r=e.inValueSlider("In Max",1),i=e.inValueSlider("Out Min",0),l=e.inValueSlider("Out Max",1),s=e.outTrigger("Next");const c=e.patch.cgl;const f=new CGL.Shader(c,e.name,e);const u=new CGL.Uniform(f,"f","inMin",a),d=new CGL.Uniform(f,"f","midPoint",o),g=new CGL.Uniform(f,"f","inMax",r),p=new CGL.Uniform(f,"f","outMin",i),m=new CGL.Uniform(f,"f","outMax",l),x=new CGL.Uniform(f,"t","tex",0);f.setSource(f.getDefaultVertexShader(),t.levels_frag);n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(e,3))return;c.pushShader(f);c.currentTextureEffect.bind();c.setTexture(0,c.currentTextureEffect.getCurrentSourceTexture().tex);c.currentTextureEffect.finish();c.popShader();s.trigger()}};Ops.Gl.ImageCompose.Levels_v2.prototype=new CABLES.Op;CABLES.OPS["cf49063c-a010-4e2b-add6-f8dea50392b5"]={f:Ops.Gl.ImageCompose.Levels_v2,objName:"Ops.Gl.ImageCompose.Levels_v2"};Ops.Gl.ColorMask=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={};const n=e.inTrigger("Execute"),a=e.inValueBool("Red",true),o=e.inValueBool("Green",true),r=e.inValueBool("Blue",true),i=e.inValueBool("Alpha",true),l=e.outTrigger("Next");const s=e.patch.cgl;n.onTriggered=function(){s.gl.colorMask(a.get(),o.get(),r.get(),i.get());l.trigger();e.patch.cgl.gl.colorMask(true,true,true,true)}};Ops.Gl.ColorMask.prototype=new CABLES.Op;CABLES.OPS["44433419-dcf4-46e6-8f40-d331598029ac"]={f:Ops.Gl.ColorMask,objName:"Ops.Gl.ColorMask"};window.addEventListener("load",function(e){CABLES.jsLoaded=new Event("CABLES.jsLoaded");document.dispatchEvent(CABLES.jsLoaded)});(()=>{"use strict";var e={};class t{constructor(e,t){this.initiator=e;this._options=t}stack(e){console.info("["+this.initiator+"] ",e);console.log((new Error).stack)}groupCollapsed(e){if(CABLES.UI&&CABLES.UI.logFilter.filterLog({initiator:this.initiator,level:0},...arguments)||!CABLES.logSilent)console.log("["+this.initiator+"]",...arguments);console.groupCollapsed("["+this.initiator+"] "+e)}table(e){console.table(e)}groupEnd(){console.groupEnd()}error(){if(CABLES.UI&&CABLES.UI.logFilter.filterLog({initiator:this.initiator,level:2},...arguments)||!CABLES.UI){console.error("["+this.initiator+"]",...arguments)}if(!CABLES.UI&&this._options&&this._options.onError){this._options.onError(this.initiator,...arguments)}}errorGui(){if(CABLES.UI)CABLES.UI.logFilter.filterLog({initiator:this.initiator,level:2},...arguments)}warn(){if(CABLES.UI&&CABLES.UI.logFilter.filterLog({initiator:this.initiator,level:1},...arguments)||!CABLES.logSilent)console.warn("["+this.initiator+"]",...arguments)}verbose(){if(CABLES.UI&&CABLES.UI.logFilter.filterLog({initiator:this.initiator,level:0},...arguments)||!CABLES.logSilent)console.log("["+this.initiator+"]",...arguments)}info(){if(CABLES.UI&&CABLES.UI.logFilter.filterLog({initiator:this.initiator,level:0},...arguments)||!CABLES.logSilent)console.info("["+this.initiator+"]",...arguments)}log(){if(CABLES.UI&&CABLES.UI.logFilter.filterLog({initiator:this.initiator,level:0},...arguments)||!CABLES.logSilent)console.log("["+this.initiator+"]",...arguments)}logGui(){if(CABLES.UI)CABLES.UI.logFilter.filterLog({initiator:this.initiator,level:0},...arguments)}userInteraction(e){}}class n{constructor(){this._log=new t("LoadingStatus");this.pixelData=null;this._finishedFence=true;this._size=0;this._pbo=null}_fence(r){const i=r.gl;this._finishedFence=false;return new Promise(function(t,n){if(r.aborted)return;let a=i.fenceSync(i.SYNC_GPU_COMMANDS_COMPLETE,0);if(!a)return;i.flush();function o(){if(r.aborted)return;const e=i.clientWaitSync(a,0,0);if(e==i.WAIT_FAILED){console.error("fence wait failed");if(n)n()}else if(e==i.TIMEOUT_EXPIRED){return setTimeout(o,0)}else if(e==i.CONDITION_SATISFIED){t();i.deleteSync(a)}else if(e==i.ALREADY_SIGNALED){t();i.deleteSync(a)}else{this._log.log("unknown fence status",e)}}o()})}read(e,t,n,a,o,r,i,l){if(CABLES.UI)if(!CABLES.UI.loaded||performance.now()-CABLES.UI.loadedTime<1e3)return;if(!this._finishedFence)return;const s=e.gl;let c=1;if(e.aborted)return;if(!t)return;if(n===CGL.Texture.TYPE_FLOAT)n=CGL.Texture.PFORMATSTR_RGBA32F;let f=CGL.Texture.isPixelFormatFloat(n);if(f)c=4;if(CGL.Texture.isPixelFormatHalfFloat(n))c=2;const u=CGL.Texture.setUpGlPixelFormat(e,n);const d=u.numColorChannels*r*i;if(r==0||i==0||d==0)return;if(!this._pixelData||this._size!=d*c){if(f)this._pixelData=new Float32Array(d);else this._pixelData=new Uint8Array(d);this._size=d*c}let g=s.UNSIGNED_BYTE;if(f)g=s.FLOAT;if(this._size==0||!this._pixelData){this._log.error("readpixel size 0",this._size,r,i);return}if(this._finishedFence){this._pbo=s.createBuffer();s.bindBuffer(s.PIXEL_PACK_BUFFER,this._pbo);s.bufferData(s.PIXEL_PACK_BUFFER,this._pixelData.byteLength,s.DYNAMIC_READ);s.bindFramebuffer(s.FRAMEBUFFER,t);s.bindBuffer(s.PIXEL_PACK_BUFFER,this._pbo);e.profileData.profileFencedPixelRead++;if(this._size!=d*c)this._log.error("buffer size invalid",d,r,i,c);s.readPixels(a,o,r,i,u.glDataFormat,u.glDataType,0);s.bindBuffer(s.PIXEL_PACK_BUFFER,null);s.bindFramebuffer(s.FRAMEBUFFER,null)}let p=this._pixelData.byteLength;if(this._finishedFence&&this._pbo)this._fence(e).then(e=>{this._wasTriggered=false;this._finishedFence=true;if(!e&&this._pixelData&&this._pixelData.byteLength==p){s.bindBuffer(s.PIXEL_PACK_BUFFER,this._pbo);s.getBufferSubData(s.PIXEL_PACK_BUFFER,0,this._pixelData);s.bindBuffer(s.PIXEL_PACK_BUFFER,null);if(l)l(this._pixelData)}s.deleteBuffer(this._pbo);this._pbo=null});return true}}CGL.PixelReader=n;((this.CGL=this.CGL||{}).COREMODULES=this.CGL.COREMODULES||{}).Pixelreader=e.Pixelreader})();
+if(!CABLES.exportedPatches)CABLES.exportedPatches={};CABLES.exportedPatches["SHZriz"]={_id:"677e832a14df888aaf500b34",ops:[{id:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e",uiAttribs:{},portsIn:[{name:"Mask",useVariable:"unknown"},{name:"Blend Mode index",value:12},{name:"Blend Mode",value:"screen"},{name:"Alpha Mask index",value:0},{name:"Alpha Mask",value:"Off"},{name:"Amount",value:1},{name:"Color index",value:1},{name:"Color",value:"RGB"},{name:"Scale",value:3.2},{name:"Aspect",value:0},{name:"Multiply",value:-.66},{name:"Harmonics index",value:0},{name:"Harmonics",value:"1"},{name:"Offset Multiply",value:1},{name:"Offset X index",value:0},{name:"Offset X",value:"None"},{name:"Offset Y index",value:0},{name:"Offset Y",value:"None"},{name:"Offset Z index",value:1},{name:"Offset Z",value:"R"}],portsOut:[{name:"trigger",links:[{portIn:"Render",portOut:"trigger",objIn:"qo8fwc0jo",objOut:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e"},{portIn:"render",portOut:"trigger",objIn:"5ledin9wy",objOut:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e"}]}],objName:"Ops.Gl.ImageCompose.Noise.PerlinNoise"},{id:"d026211c-7030-44d2-b052-453de4af90c6",uiAttribs:{},portsIn:[{name:"Use viewport size",value:1},{name:"Width",value:768},{name:"Height",value:484},{name:"Filter index",value:1},{name:"Filter",value:"linear"},{name:"Wrap index",value:0},{name:"Wrap",value:"clamp to edge"},{name:"HDR",value:0},{name:"Transparent",value:0}],portsOut:[{name:"Next",links:[{portIn:"render",portOut:"Next",objIn:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e",objOut:"d026211c-7030-44d2-b052-453de4af90c6"},{portIn:"Render",portOut:"Next",objIn:"u6ggr6b3b",objOut:"d026211c-7030-44d2-b052-453de4af90c6"}]},{name:"texture_out",links:[{portIn:"Image",portOut:"texture_out",objIn:"4aade3ad-896e-4d60-bb26-2f60dee0c8fc",objOut:"d026211c-7030-44d2-b052-453de4af90c6"}]},{name:"Aspect Ratio",value:1.8441780821917808}],objName:"Ops.Gl.ImageCompose.ImageCompose_v2"},{id:"6d974f9c-edab-4fcd-b245-f57ca8fc9f67",uiAttribs:{},portsIn:[{name:"Speed",value:.4},{name:"Play",value:1},{name:"Sync to timeline",value:0}],portsOut:[{name:"Time",links:[{portIn:"X",portOut:"Time",objIn:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e",objOut:"6d974f9c-edab-4fcd-b245-f57ca8fc9f67"},{portIn:"Y",portOut:"Time",objIn:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e",objOut:"6d974f9c-edab-4fcd-b245-f57ca8fc9f67"},{portIn:"Z",portOut:"Time",objIn:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e",objOut:"6d974f9c-edab-4fcd-b245-f57ca8fc9f67"}]}],objName:"Ops.Anim.Timer_v2"},{id:"c9c65449-ecca-42cd-a57f-42afb1c5676c",uiAttribs:{},portsIn:[{name:"r",value:1},{name:"g",value:1},{name:"b",value:1},{name:"a",value:1},{name:"colorizeTexture",value:1},{name:"Vertex Colors",value:0},{name:"Alpha Mask Source index",value:0},{name:"Alpha Mask Source",value:"Luminance"},{name:"Opacity TexCoords Transform",value:0},{name:"Discard Transparent Pixels",value:0},{name:"diffuseRepeatX",value:1},{name:"diffuseRepeatY",value:1},{name:"Tex Offset X",value:0},{name:"Tex Offset Y",value:0},{name:"Crop TexCoords",value:0},{name:"billboard",value:0}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"872bbc54-93b3-4a60-aada-b93b67b1a6c5",objOut:"c9c65449-ecca-42cd-a57f-42afb1c5676c"}]}],objName:"Ops.Gl.Shader.BasicMaterial_v3"},{id:"7c398413-80ab-423a-876c-764bf2335522",uiAttribs:{},portsOut:[{name:"trigger 0",links:[{portIn:"Exec",portOut:"trigger 0",objIn:"2b813e13-92ec-4b44-b77a-0c856686e6e9",objOut:"7c398413-80ab-423a-876c-764bf2335522"}]},{name:"trigger 1",links:[{portIn:"render",portOut:"trigger 1",objIn:"107b1749-0349-418b-9106-1965c24ceffa",objOut:"7c398413-80ab-423a-876c-764bf2335522"}]},{name:"trigger 13",links:[{portIn:"render",portOut:"trigger 13",objIn:"a7d5ac2b-9f4c-44af-a162-37acef646e50",objOut:"7c398413-80ab-423a-876c-764bf2335522"}]}],objName:"Ops.Extension.Deprecated.Sequence34"},{id:"2fc6f1a2-6ef5-430c-81d2-09bdc1a02f39",uiAttribs:{},portsIn:[{name:"use viewport size",value:1},{name:"texture width",value:1077},{name:"texture height",value:584},{name:"Auto Aspect",value:0},{name:"filter index",value:1},{name:"filter",value:"linear"},{name:"Wrap index",value:1},{name:"Wrap",value:"Repeat"},{name:"MSAA index",value:2},{name:"MSAA",value:"4x"},{name:"HDR",value:0,title:"Pixelformat Float 32bit"},{name:"Depth",value:1},{name:"Clear",value:1}],portsOut:[{name:"trigger",links:[{portIn:"exe",portOut:"trigger",objIn:"7c398413-80ab-423a-876c-764bf2335522",objOut:"2fc6f1a2-6ef5-430c-81d2-09bdc1a02f39"}]},{name:"texture",links:[{portIn:"image",portOut:"texture",objIn:"8de53e69-2e50-4592-83ff-67dca024b733",objOut:"2fc6f1a2-6ef5-430c-81d2-09bdc1a02f39"}]}],objName:"Ops.Gl.RenderToTexture"},{id:"a7d5ac2b-9f4c-44af-a162-37acef646e50",uiAttribs:{},portsIn:[{name:"posZ",value:0},{name:"scale",value:1},{name:"rotX",value:0},{name:"rotY",value:0},{name:"rotZ",value:0}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"8dc6c484-9c21-4210-b30b-71f327ce9b75",objOut:"a7d5ac2b-9f4c-44af-a162-37acef646e50"}]}],objName:"Ops.Gl.Matrix.Transform"},{id:"ca52445b-1858-4655-b345-bd89b6154caf",uiAttribs:{},portsIn:[{name:"radius",value:-.17},{name:"innerRadius",value:0},{name:"segments",value:40},{name:"percent",value:1},{name:"steps",value:0},{name:"invertSteps",value:0},{name:"mapping index",value:0},{name:"mapping",value:"flat"},{name:"Spline",value:0},{name:"Draw",value:1}],objName:"Ops.Gl.Meshes.Circle"},{id:"107b1749-0349-418b-9106-1965c24ceffa",uiAttribs:{},portsIn:[{name:"Scale index",value:1},{name:"Scale",value:"Fit"},{name:"Flip Y",value:0},{name:"Flip X",value:0}],objName:"Ops.Gl.Meshes.FullscreenRectangle"},{id:"8de53e69-2e50-4592-83ff-67dca024b733",uiAttribs:{},portsIn:[{name:"amount",value:.615},{name:"blendMode index",value:0},{name:"blendMode",value:"normal"},{name:"alphaSrc index",value:0},{name:"alphaSrc",value:"alpha channel"},{name:"removeAlphaSrc",value:1},{name:"invert alpha channel",value:0},{name:"flip x",value:0},{name:"flip y",value:0},{name:"scale",value:.973},{name:"pos x",value:0},{name:"pos y",value:0},{name:"rotate",value:1}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"de9fdb58-9964-4674-8d0b-d4c3772ec6ff",objOut:"8de53e69-2e50-4592-83ff-67dca024b733"}]}],objName:"Ops.Gl.ImageCompose.DrawImage"},{id:"bc8b6d12-d8d0-44f6-aced-09ea8e07d3d8",uiAttribs:{},portsIn:[{name:"Blend Mode index",value:0},{name:"Blend Mode",value:"normal"},{name:"Amount",value:.092},{name:"Mask Invert",value:0},{name:"r",value:.3253454899787891},{name:"g",value:.0012054443359375},{name:"b",value:1}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"4b1e604b-94d9-4b8c-a835-44000ba6dbea",objOut:"bc8b6d12-d8d0-44f6-aced-09ea8e07d3d8"}]}],objName:"Ops.Gl.ImageCompose.Color"},{id:"4b1e604b-94d9-4b8c-a835-44000ba6dbea",uiAttribs:{},portsIn:[{name:"amount",value:.6},{name:"times",value:1}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"8de53e69-2e50-4592-83ff-67dca024b733",objOut:"4b1e604b-94d9-4b8c-a835-44000ba6dbea"}]}],objName:"Ops.Extension.Deprecated.Twirl"},{id:"de9fdb58-9964-4674-8d0b-d4c3772ec6ff",uiAttribs:{},portsIn:[{name:"hue",value:1}],objName:"Ops.Gl.ImageCompose.Hue"},{id:"a213a700-0a04-4c80-83a9-01968dedb7e4",uiAttribs:{},portsIn:[{name:"use viewport size",value:1},{name:"width",value:1077},{name:"height",value:584},{name:"filter index",value:1},{name:"filter",value:"linear"},{name:"wrap index",value:0},{name:"wrap",value:"clamp to edge"},{name:"HDR",value:1},{name:"Background Alpha",value:0}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"bc8b6d12-d8d0-44f6-aced-09ea8e07d3d8",objOut:"a213a700-0a04-4c80-83a9-01968dedb7e4"}]},{name:"texture_out",links:[{portIn:"Texture",portOut:"texture_out",objIn:"107b1749-0349-418b-9106-1965c24ceffa",objOut:"a213a700-0a04-4c80-83a9-01968dedb7e4"},{portIn:"Image",portOut:"texture_out",objIn:"ea08f3f8-d412-44da-8a11-95ee1f3481b4",objOut:"a213a700-0a04-4c80-83a9-01968dedb7e4"}]},{name:"Aspect Ratio",value:1.8441780821917808}],objName:"Ops.Gl.ImageCompose.ImageCompose"},{id:"ade559bb-0bf1-4c52-a024-a34a66a4f277",uiAttribs:{},portsIn:[{name:"Use viewport size",value:1},{name:"Width",value:768},{name:"Height",value:484},{name:"Filter index",value:1},{name:"Filter",value:"linear"},{name:"Wrap index",value:0},{name:"Wrap",value:"clamp to edge"},{name:"HDR",value:0},{name:"Transparent",value:0}],portsOut:[{name:"Next",links:[{portIn:"render",portOut:"Next",objIn:"ea08f3f8-d412-44da-8a11-95ee1f3481b4",objOut:"ade559bb-0bf1-4c52-a024-a34a66a4f277"}]},{name:"texture_out",links:[{portIn:"displaceTex",portOut:"texture_out",objIn:"177e7264-c669-4062-8891-3ce8690b9939",objOut:"ade559bb-0bf1-4c52-a024-a34a66a4f277"}]},{name:"Aspect Ratio",value:1.8441780821917808}],objName:"Ops.Gl.ImageCompose.ImageCompose_v2"},{id:"ea08f3f8-d412-44da-8a11-95ee1f3481b4",uiAttribs:{},portsIn:[{name:"blendMode index",value:0},{name:"blendMode",value:"normal"},{name:"amount",value:1},{name:"Premultiplied",value:0},{name:"Alpha Mask",value:0},{name:"removeAlphaSrc",value:0},{name:"Mask Src index",value:0},{name:"Mask Src",value:"alpha channel"},{name:"Invert alpha channel",value:0},{name:"Aspect Ratio",value:0},{name:"Stretch Axis index",value:0},{name:"Stretch Axis",value:"X"},{name:"Position",value:0},{name:"Crop",value:0},{name:"flip x",value:0},{name:"flip y",value:0},{name:"Transform",value:0},{name:"Scale X",value:1},{name:"Scale Y",value:1},{name:"Position X",value:0},{name:"Position Y",value:0},{name:"Rotation",value:0},{name:"Clip Repeat",value:0}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"2092c84d-a652-482f-82f9-b58f8ed8969d",objOut:"ea08f3f8-d412-44da-8a11-95ee1f3481b4"}]}],objName:"Ops.Gl.ImageCompose.DrawImage_v3"},{id:"f487e7d4-3269-4d85-8975-961b9bd7bc39",uiAttribs:{},portsOut:[{name:"trigger 0",links:[{portIn:"render",portOut:"trigger 0",objIn:"2fc6f1a2-6ef5-430c-81d2-09bdc1a02f39",objOut:"f487e7d4-3269-4d85-8975-961b9bd7bc39"}]},{name:"trigger 1",links:[{portIn:"render",portOut:"trigger 1",objIn:"a213a700-0a04-4c80-83a9-01968dedb7e4",objOut:"f487e7d4-3269-4d85-8975-961b9bd7bc39"}]},{name:"trigger 2",links:[{portIn:"Render",portOut:"trigger 2",objIn:"ade559bb-0bf1-4c52-a024-a34a66a4f277",objOut:"f487e7d4-3269-4d85-8975-961b9bd7bc39"}]},{name:"trigger 3",links:[{portIn:"Render",portOut:"trigger 3",objIn:"d026211c-7030-44d2-b052-453de4af90c6",objOut:"f487e7d4-3269-4d85-8975-961b9bd7bc39"}]},{name:"trigger 5",links:[{portIn:"render",portOut:"trigger 5",objIn:"c9c65449-ecca-42cd-a57f-42afb1c5676c",objOut:"f487e7d4-3269-4d85-8975-961b9bd7bc39"}]},{name:"trigger 6",links:[{portIn:"Render",portOut:"trigger 6",objIn:"5d1eee56-9f8f-4b79-affa-000e719057f2",objOut:"f487e7d4-3269-4d85-8975-961b9bd7bc39"}]},{name:"trigger 7",links:[{portIn:"Render",portOut:"trigger 7",objIn:"68c70fc4-9146-4730-a80f-0aca79aaa38b",objOut:"f487e7d4-3269-4d85-8975-961b9bd7bc39"}]}],objName:"Ops.Trigger.Sequence"},{id:"4aade3ad-896e-4d60-bb26-2f60dee0c8fc",uiAttribs:{},portsIn:[{name:"blendMode index",value:0},{name:"blendMode",value:"normal"},{name:"amount",value:1},{name:"Premultiplied",value:0},{name:"Alpha Mask",value:0},{name:"removeAlphaSrc",value:0},{name:"Mask Src index",value:0},{name:"Mask Src",value:"alpha channel"},{name:"Invert alpha channel",value:0},{name:"Aspect Ratio",value:0},{name:"Stretch Axis index",value:0},{name:"Stretch Axis",value:"X"},{name:"Position",value:0},{name:"Crop",value:0},{name:"flip x",value:0},{name:"flip y",value:0},{name:"Transform",value:0},{name:"Scale X",value:1},{name:"Scale Y",value:1},{name:"Position X",value:0},{name:"Position Y",value:0},{name:"Rotation",value:0},{name:"Clip Repeat",value:0}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"28c78ff6-94e3-4cf2-8f97-678806ce7757",objOut:"4aade3ad-896e-4d60-bb26-2f60dee0c8fc"}]}],objName:"Ops.Gl.ImageCompose.DrawImage_v3"},{id:"5d1eee56-9f8f-4b79-affa-000e719057f2",uiAttribs:{},portsIn:[{name:"Use viewport size",value:1},{name:"Width",value:768},{name:"Height",value:484},{name:"Filter index",value:1},{name:"Filter",value:"linear"},{name:"Wrap index",value:0},{name:"Wrap",value:"clamp to edge"},{name:"HDR",value:0},{name:"Transparent",value:0}],portsOut:[{name:"Next",links:[{portIn:"render",portOut:"Next",objIn:"4aade3ad-896e-4d60-bb26-2f60dee0c8fc",objOut:"5d1eee56-9f8f-4b79-affa-000e719057f2"}]},{name:"texture_out",links:[{portIn:"Image",portOut:"texture_out",objIn:"15fcaa9e-c4da-44ff-b05f-5e9beca599fc",objOut:"5d1eee56-9f8f-4b79-affa-000e719057f2"}]},{name:"Aspect Ratio",value:1.8441780821917808}],objName:"Ops.Gl.ImageCompose.ImageCompose_v2"},{id:"15fcaa9e-c4da-44ff-b05f-5e9beca599fc",uiAttribs:{},portsIn:[{name:"blendMode index",value:0},{name:"blendMode",value:"normal"},{name:"amount",value:1},{name:"Premultiplied",value:0},{name:"Alpha Mask",value:0},{name:"removeAlphaSrc",value:0},{name:"Mask Src index",value:0},{name:"Mask Src",value:"alpha channel"},{name:"Invert alpha channel",value:0},{name:"Aspect Ratio",value:0},{name:"Stretch Axis index",value:0},{name:"Stretch Axis",value:"X"},{name:"Position",value:0},{name:"Crop",value:0},{name:"flip x",value:0},{name:"flip y",value:0},{name:"Transform",value:0},{name:"Scale X",value:1},{name:"Scale Y",value:1},{name:"Position X",value:0},{name:"Position Y",value:0},{name:"Rotation",value:0},{name:"Clip Repeat",value:0}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"177e7264-c669-4062-8891-3ce8690b9939",objOut:"15fcaa9e-c4da-44ff-b05f-5e9beca599fc"}]}],objName:"Ops.Gl.ImageCompose.DrawImage_v3"},{id:"68c70fc4-9146-4730-a80f-0aca79aaa38b",uiAttribs:{},portsIn:[{name:"Use viewport size",value:1},{name:"Width",value:768},{name:"Height",value:484},{name:"Filter index",value:1},{name:"Filter",value:"linear"},{name:"Wrap index",value:0},{name:"Wrap",value:"clamp to edge"},{name:"HDR",value:0},{name:"Transparent",value:0}],portsOut:[{name:"Next",links:[{portIn:"render",portOut:"Next",objIn:"15fcaa9e-c4da-44ff-b05f-5e9beca599fc",objOut:"68c70fc4-9146-4730-a80f-0aca79aaa38b"}]},{name:"texture_out",links:[{portIn:"texture",portOut:"texture_out",objIn:"c9c65449-ecca-42cd-a57f-42afb1c5676c",objOut:"68c70fc4-9146-4730-a80f-0aca79aaa38b"}]},{name:"Aspect Ratio",value:1.8441780821917808}],objName:"Ops.Gl.ImageCompose.ImageCompose_v2"},{id:"872bbc54-93b3-4a60-aada-b93b67b1a6c5",uiAttribs:{},portsIn:[{name:"Scale index",value:1},{name:"Scale",value:"Fit"},{name:"Flip Y",value:0},{name:"Flip X",value:0}],objName:"Ops.Gl.Meshes.FullscreenRectangle"},{id:"f88ac742-9a62-4a46-8878-a2a97ff0d61f",uiAttribs:{},portsIn:[{name:"FPS Limit",value:0},{name:"Reduce FPS not focussed",value:1},{name:"Reduce FPS loading",value:0},{name:"Clear",value:1},{name:"ClearAlpha",value:1},{name:"Fullscreen Button",value:0},{name:"Active",value:1},{name:"Hires Displays",value:0},{name:"Pixel Unit index",value:0},{name:"Pixel Unit",value:"Display"}],portsOut:[{name:"trigger",links:[{portIn:"exe",portOut:"trigger",objIn:"f487e7d4-3269-4d85-8975-961b9bd7bc39",objOut:"f88ac742-9a62-4a46-8878-a2a97ff0d61f"}]},{name:"width",value:1077},{name:"height",value:584}],objName:"Ops.Gl.MainLoop"},{id:"2092c84d-a652-482f-82f9-b58f8ed8969d",uiAttribs:{},portsIn:[{name:"amount",value:1.07},{name:"Clamp",value:0},{name:"Mask Invert",value:0},{name:"direction index",value:0},{name:"direction",value:"both"}],objName:"Ops.Gl.ImageCompose.FastBlur"},{id:"b9af156d-86c9-4179-8561-604bdaea6b88",uiAttribs:{},portsIn:[{name:"Active",value:1},{name:"relative",value:0},{name:"normalize",value:0},{name:"flip y",value:0},{name:"Area index",value:0},{name:"Area",value:"Canvas"},{name:"right click prevent default",value:1},{name:"Touch support",value:1},{name:"smooth",value:0},{name:"smoothSpeed",value:200},{name:"multiply",value:1}],portsOut:[{name:"x",links:[{portIn:"X",portOut:"x",objIn:"2b813e13-92ec-4b44-b77a-0c856686e6e9",objOut:"b9af156d-86c9-4179-8561-604bdaea6b88"}]},{name:"y",links:[{portIn:"Y",portOut:"y",objIn:"2b813e13-92ec-4b44-b77a-0c856686e6e9",objOut:"b9af156d-86c9-4179-8561-604bdaea6b88"}]},{name:"button down",value:0},{name:"mouseOver",value:0},{name:"button",value:0}],objName:"Ops.Devices.Mouse.Mouse_v2"},{id:"2b813e13-92ec-4b44-b77a-0c856686e6e9",uiAttribs:{},portsIn:[{name:"Input Type index",value:0},{name:"Input Type",value:"Pixel"}],portsOut:[{name:"Result X",links:[{portIn:"posX",portOut:"Result X",objIn:"a7d5ac2b-9f4c-44af-a162-37acef646e50",objOut:"2b813e13-92ec-4b44-b77a-0c856686e6e9"}]},{name:"Result Y",links:[{portIn:"posY",portOut:"Result Y",objIn:"a7d5ac2b-9f4c-44af-a162-37acef646e50",objOut:"2b813e13-92ec-4b44-b77a-0c856686e6e9"}]}],objName:"Ops.Gl.Matrix.ScreenPosTo3d_v3"},{id:"177e7264-c669-4062-8891-3ce8690b9939",uiAttribs:{},portsIn:[{name:"Blend Mode index",value:0},{name:"Blend Mode",value:"normal"},{name:"Amount",value:1},{name:"amount X",value:1},{name:"amount Y",value:1},{name:"Wrap index",value:0},{name:"Wrap",value:"Mirror"},{name:"Input index",value:0},{name:"Input",value:"Luminance"},{name:"Zero Displace index",value:1},{name:"Zero Displace",value:"Black"}],objName:"Ops.Gl.ImageCompose.PixelDisplacement_v3"},{id:"u6ggr6b3b",uiAttribs:{},portsIn:[{name:"Blend Mode index",value:5},{name:"Blend Mode",value:"average"},{name:"Amount",value:.33},{name:"Strength",value:4.95},{name:"Width",value:1},{name:"Mul Color",value:.683}],objName:"Ops.Gl.ImageCompose.EdgeDetection_v4"},{id:"qo8fwc0jo",uiAttribs:{},portsIn:[{name:"In Min",value:0},{name:"Midpoint",value:0},{name:"In Max",value:.898},{name:"Out Min",value:.694},{name:"Out Max",value:1}],objName:"Ops.Gl.ImageCompose.Levels_v2"},{id:"8dc6c484-9c21-4210-b30b-71f327ce9b75",uiAttribs:{},portsIn:[{name:"r",value:1},{name:"g",value:1},{name:"b",value:1},{name:"a",value:1},{name:"colorizeTexture",value:0},{name:"Vertex Colors",value:0},{name:"Alpha Mask Source index",value:0},{name:"Alpha Mask Source",value:"Luminance"},{name:"Opacity TexCoords Transform",value:0},{name:"Discard Transparent Pixels",value:0},{name:"diffuseRepeatX",value:1},{name:"diffuseRepeatY",value:1},{name:"Tex Offset X",value:0},{name:"Tex Offset Y",value:0},{name:"Crop TexCoords",value:0},{name:"billboard",value:0}],portsOut:[{name:"trigger",links:[{portIn:"render",portOut:"trigger",objIn:"ca52445b-1858-4655-b345-bd89b6154caf",objOut:"8dc6c484-9c21-4210-b30b-71f327ce9b75"}]}],objName:"Ops.Gl.Shader.BasicMaterial_v3"},{id:"5ledin9wy",uiAttribs:{},portsIn:[{name:"amount",value:8.76},{name:"direction index",value:2},{name:"direction",value:"horizontal"},{name:"Fast",value:0}],objName:"Ops.Gl.ImageCompose.Blur"},{id:"q8hok0i30",uiAttribs:{},portsIn:[{name:"File",value:"assets/674da67dbc505b21cb1fe05e_hilly_terrain_01_puresky_4k_11zon.jpg",display:"file"},{name:"Filter index",value:2},{name:"Filter",value:"mipmap"},{name:"Wrap index",value:0},{name:"Wrap",value:"repeat"},{name:"Anisotropic index",value:5},{name:"Anisotropic",value:"16"},{name:"Data Format index",value:3},{name:"Data Format",value:"RGBA"},{name:"Flip",value:0},{name:"Pre Multiplied Alpha",value:0},{name:"Active",value:1},{name:"Save Memory",value:1},{name:"Add Cachebuster",value:0}],portsOut:[{name:"Texture",links:[{portIn:"Mask",portOut:"Texture",objIn:"a68e16e6-3c58-4f58-a4fa-c4d74adf1e4e",objOut:"q8hok0i30"}]},{name:"Width",value:1599},{name:"Height",value:799},{name:"Aspect Ratio",value:2.0012515644555693},{name:"Loaded",value:1},{name:"Loading",value:0}],objName:"Ops.Gl.Texture_v2"},{id:"28c78ff6-94e3-4cf2-8f97-678806ce7757",uiAttribs:{},portsIn:[{name:"Blend Mode index",value:0},{name:"Blend Mode",value:"normal"},{name:"Amount",value:1},{name:"amount X",value:.741},{name:"amount Y",value:.711},{name:"Wrap index",value:0},{name:"Wrap",value:"Mirror"},{name:"Input index",value:0},{name:"Input",value:"Luminance"},{name:"Zero Displace index",value:1},{name:"Zero Displace",value:"Black"}],objName:"Ops.Gl.ImageCompose.PixelDisplacement_v3"}],export:{time:"2025-01-08 14:53",service:"html",exportNumber:1}};if(!CABLES.exportedPatch){CABLES.exportedPatch=CABLES.exportedPatches["SHZriz"]}"use strict";var CABLES=CABLES||{};CABLES.OPS=CABLES.OPS||{};var Ops=Ops||{};Ops.Gl=Ops.Gl||{};Ops.Anim=Ops.Anim||{};Ops.Devices=Ops.Devices||{};Ops.Trigger=Ops.Trigger||{};Ops.Extension=Ops.Extension||{};Ops.Gl.Matrix=Ops.Gl.Matrix||{};Ops.Gl.Meshes=Ops.Gl.Meshes||{};Ops.Gl.Shader=Ops.Gl.Shader||{};Ops.Devices.Mouse=Ops.Devices.Mouse||{};Ops.Gl.ImageCompose=Ops.Gl.ImageCompose||{};Ops.Extension.Deprecated=Ops.Extension.Deprecated||{};Ops.Gl.ImageCompose.Noise=Ops.Gl.ImageCompose.Noise||{};Ops.Gl.ImageCompose.Noise.PerlinNoise=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={perlinnoise3d_frag:'UNI float z;\nUNI float x;\nUNI float y;\nUNI float scale;\nUNI float rangeMul;\nUNI float harmonics;\nUNI float aspect;\n\nIN vec2 texCoord;\nUNI sampler2D tex;\n\n#ifdef HAS_TEX_OFFSETMAP\n    UNI sampler2D texOffsetZ;\n    UNI float offMul;\n#endif\n\n#ifdef HAS_TEX_MASK\n    UNI sampler2D texMask;\n#endif\n\nUNI float amount;\n\n{{CGL.BLENDMODES}}\n\n\nfloat Interpolation_C2( float x ) { return x * x * x * (x * (x * 6.0 - 15.0) + 10.0); }   //  6x^5-15x^4+10x^3\t( Quintic Curve.  As used by Perlin in Improved Noise.  http://mrl.nyu.edu/~perlin/paper445.pdf )\nvec2 Interpolation_C2( vec2 x ) { return x * x * x * (x * (x * 6.0 - 15.0) + 10.0); }\nvec3 Interpolation_C2( vec3 x ) { return x * x * x * (x * (x * 6.0 - 15.0) + 10.0); }\nvec4 Interpolation_C2( vec4 x ) { return x * x * x * (x * (x * 6.0 - 15.0) + 10.0); }\nvec4 Interpolation_C2_InterpAndDeriv( vec2 x ) { return x.xyxy * x.xyxy * ( x.xyxy * ( x.xyxy * ( x.xyxy * vec2( 6.0, 0.0 ).xxyy + vec2( -15.0, 30.0 ).xxyy ) + vec2( 10.0, -60.0 ).xxyy ) + vec2( 0.0, 30.0 ).xxyy ); }\nvec3 Interpolation_C2_Deriv( vec3 x ) { return x * x * (x * (x * 30.0 - 60.0) + 30.0); }\n\n\nvoid FAST32_hash_3D( vec3 gridcell, out vec4 lowz_hash, out vec4 highz_hash )\t//\tgenerates a random number for each of the 8 cell corners\n{\n    //    gridcell is assumed to be an integer coordinate\n\n    //\tTODO: \tthese constants need tweaked to find the best possible noise.\n    //\t\t\tprobably requires some kind of brute force computational searching or something....\n    const vec2 OFFSET = vec2( 50.0, 161.0 );\n    const float DOMAIN = 69.0;\n    const float SOMELARGEFLOAT = 635.298681;\n    const float ZINC = 48.500388;\n\n    //\ttruncate the domain\n    gridcell.xyz = gridcell.xyz - floor(gridcell.xyz * ( 1.0 / DOMAIN )) * DOMAIN;\n    vec3 gridcell_inc1 = step( gridcell, vec3( DOMAIN - 1.5 ) ) * ( gridcell + 1.0 );\n\n    //\tcalculate the noise\n    vec4 P = vec4( gridcell.xy, gridcell_inc1.xy ) + OFFSET.xyxy;\n    P *= P;\n    P = P.xzxz * P.yyww;\n    highz_hash.xy = vec2( 1.0 / ( SOMELARGEFLOAT + vec2( gridcell.z, gridcell_inc1.z ) * ZINC ) );\n    lowz_hash = fract( P * highz_hash.xxxx );\n    highz_hash = fract( P * highz_hash.yyyy );\n}\n\n\n\n\nvoid FAST32_hash_3D( \tvec3 gridcell,\n                        out vec4 lowz_hash_0,\n                        out vec4 lowz_hash_1,\n                        out vec4 lowz_hash_2,\n                        out vec4 highz_hash_0,\n                        out vec4 highz_hash_1,\n                        out vec4 highz_hash_2\t)\t\t//\tgenerates 3 random numbers for each of the 8 cell corners\n{\n    //    gridcell is assumed to be an integer coordinate\n\n    //\tTODO: \tthese constants need tweaked to find the best possible noise.\n    //\t\t\tprobably requires some kind of brute force computational searching or something....\n    const vec2 OFFSET = vec2( 50.0, 161.0 );\n    const float DOMAIN = 69.0;\n    const vec3 SOMELARGEFLOATS = vec3( 635.298681, 682.357502, 668.926525 );\n    const vec3 ZINC = vec3( 48.500388, 65.294118, 63.934599 );\n\n    //\ttruncate the domain\n    gridcell.xyz = gridcell.xyz - floor(gridcell.xyz * ( 1.0 / DOMAIN )) * DOMAIN;\n    vec3 gridcell_inc1 = step( gridcell, vec3( DOMAIN - 1.5 ) ) * ( gridcell + 1.0 );\n\n    //\tcalculate the noise\n    vec4 P = vec4( gridcell.xy, gridcell_inc1.xy ) + OFFSET.xyxy;\n    P *= P;\n    P = P.xzxz * P.yyww;\n    vec3 lowz_mod = vec3( 1.0 / ( SOMELARGEFLOATS.xyz + gridcell.zzz * ZINC.xyz ) );\n    vec3 highz_mod = vec3( 1.0 / ( SOMELARGEFLOATS.xyz + gridcell_inc1.zzz * ZINC.xyz ) );\n    lowz_hash_0 = fract( P * lowz_mod.xxxx );\n    highz_hash_0 = fract( P * highz_mod.xxxx );\n    lowz_hash_1 = fract( P * lowz_mod.yyyy );\n    highz_hash_1 = fract( P * highz_mod.yyyy );\n    lowz_hash_2 = fract( P * lowz_mod.zzzz );\n    highz_hash_2 = fract( P * highz_mod.zzzz );\n}\nfloat Falloff_Xsq_C1( float xsq ) { xsq = 1.0 - xsq; return xsq*xsq; }\t// ( 1.0 - x*x )^2   ( Used by Humus for lighting falloff in Just Cause 2.  GPUPro 1 )\nfloat Falloff_Xsq_C2( float xsq ) { xsq = 1.0 - xsq; return xsq*xsq*xsq; }\t// ( 1.0 - x*x )^3.   NOTE: 2nd derivative is 0.0 at x=1.0, but non-zero at x=0.0\nvec4 Falloff_Xsq_C2( vec4 xsq ) { xsq = 1.0 - xsq; return xsq*xsq*xsq; }\n\n\n//\n//\tPerlin Noise 3D  ( gradient noise )\n//\tReturn value range of -1.0->1.0\n//\thttp://briansharpe.files.wordpress.com/2011/11/perlinsample.jpg\n//\nfloat Perlin3D( vec3 P )\n{\n    //\testablish our grid cell and unit position\n    vec3 Pi = floor(P);\n    vec3 Pf = P - Pi;\n    vec3 Pf_min1 = Pf - 1.0;\n\n#if 1\n    //\n    //\tclassic noise.\n    //\trequires 3 random values per point.  with an efficent hash function will run faster than improved noise\n    //\n\n    //\tcalculate the hash.\n    //\t( various hashing methods listed in order of speed )\n    vec4 hashx0, hashy0, hashz0, hashx1, hashy1, hashz1;\n    FAST32_hash_3D( Pi, hashx0, hashy0, hashz0, hashx1, hashy1, hashz1 );\n    //SGPP_hash_3D( Pi, hashx0, hashy0, hashz0, hashx1, hashy1, hashz1 );\n\n    //\tcalculate the gradients\n    vec4 grad_x0 = hashx0 - 0.49999;\n    vec4 grad_y0 = hashy0 - 0.49999;\n    vec4 grad_z0 = hashz0 - 0.49999;\n    vec4 grad_x1 = hashx1 - 0.49999;\n    vec4 grad_y1 = hashy1 - 0.49999;\n    vec4 grad_z1 = hashz1 - 0.49999;\n    vec4 grad_results_0 = inversesqrt( grad_x0 * grad_x0 + grad_y0 * grad_y0 + grad_z0 * grad_z0 ) * ( vec2( Pf.x, Pf_min1.x ).xyxy * grad_x0 + vec2( Pf.y, Pf_min1.y ).xxyy * grad_y0 + Pf.zzzz * grad_z0 );\n    vec4 grad_results_1 = inversesqrt( grad_x1 * grad_x1 + grad_y1 * grad_y1 + grad_z1 * grad_z1 ) * ( vec2( Pf.x, Pf_min1.x ).xyxy * grad_x1 + vec2( Pf.y, Pf_min1.y ).xxyy * grad_y1 + Pf_min1.zzzz * grad_z1 );\n\n#if 1\n    //\tClassic Perlin Interpolation\n    vec3 blend = Interpolation_C2( Pf );\n    vec4 res0 = mix( grad_results_0, grad_results_1, blend.z );\n    vec4 blend2 = vec4( blend.xy, vec2( 1.0 - blend.xy ) );\n    float final = dot( res0, blend2.zxzx * blend2.wwyy );\n    final *= 1.1547005383792515290182975610039;\t\t//\t(optionally) scale things to a strict -1.0->1.0 range    *= 1.0/sqrt(0.75)\n    return final;\n#else\n    //\tClassic Perlin Surflet\n    //\thttp://briansharpe.wordpress.com/2012/03/09/modifications-to-classic-perlin-noise/\n    Pf *= Pf;\n    Pf_min1 *= Pf_min1;\n    vec4 vecs_len_sq = vec4( Pf.x, Pf_min1.x, Pf.x, Pf_min1.x ) + vec4( Pf.yy, Pf_min1.yy );\n    float final = dot( Falloff_Xsq_C2( min( vec4( 1.0 ), vecs_len_sq + Pf.zzzz ) ), grad_results_0 ) + dot( Falloff_Xsq_C2( min( vec4( 1.0 ), vecs_len_sq + Pf_min1.zzzz ) ), grad_results_1 );\n    final *= 2.3703703703703703703703703703704;\t\t//\t(optionally) scale things to a strict -1.0->1.0 range    *= 1.0/cube(0.75)\n    return final;\n#endif\n\n#else\n    //\n    //\timproved noise.\n    //\trequires 1 random value per point.  Will run faster than classic noise if a slow hashing function is used\n    //\n\n    //\tcalculate the hash.\n    //\t( various hashing methods listed in order of speed )\n    vec4 hash_lowz, hash_highz;\n    FAST32_hash_3D( Pi, hash_lowz, hash_highz );\n    //BBS_hash_3D( Pi, hash_lowz, hash_highz );\n    //SGPP_hash_3D( Pi, hash_lowz, hash_highz );\n\n    //\n    //\t"improved" noise using 8 corner gradients.  Faster than the 12 mid-edge point method.\n    //\tKen mentions using diagonals like this can cause "clumping", but we\'ll live with that.\n    //\t[1,1,1]  [-1,1,1]  [1,-1,1]  [-1,-1,1]\n    //\t[1,1,-1] [-1,1,-1] [1,-1,-1] [-1,-1,-1]\n    //\n    hash_lowz -= 0.5;\n    vec4 grad_results_0_0 = vec2( Pf.x, Pf_min1.x ).xyxy * sign( hash_lowz );\n    hash_lowz = abs( hash_lowz ) - 0.25;\n    vec4 grad_results_0_1 = vec2( Pf.y, Pf_min1.y ).xxyy * sign( hash_lowz );\n    vec4 grad_results_0_2 = Pf.zzzz * sign( abs( hash_lowz ) - 0.125 );\n    vec4 grad_results_0 = grad_results_0_0 + grad_results_0_1 + grad_results_0_2;\n\n    hash_highz -= 0.5;\n    vec4 grad_results_1_0 = vec2( Pf.x, Pf_min1.x ).xyxy * sign( hash_highz );\n    hash_highz = abs( hash_highz ) - 0.25;\n    vec4 grad_results_1_1 = vec2( Pf.y, Pf_min1.y ).xxyy * sign( hash_highz );\n    vec4 grad_results_1_2 = Pf_min1.zzzz * sign( abs( hash_highz ) - 0.125 );\n    vec4 grad_results_1 = grad_results_1_0 + grad_results_1_1 + grad_results_1_2;\n\n    //\tblend the gradients and return\n    vec3 blend = Interpolation_C2( Pf );\n    vec4 res0 = mix( grad_results_0, grad_results_1, blend.z );\n    vec4 blend2 = vec4( blend.xy, vec2( 1.0 - blend.xy ) );\n    return dot( res0, blend2.zxzx * blend2.wwyy ) * (2.0 / 3.0);\t//\t(optionally) mult by (2.0/3.0) to scale to a strict -1.0->1.0 range\n#endif\n}\n\nvoid main()\n{\n    vec4 base=texture(tex,texCoord);\n    vec2 p=vec2(texCoord.x-0.5,texCoord.y-0.5);\n\n    p=p*scale;\n    p=vec2(p.x+0.5-x,p.y+0.5-y);\n\n\n\n    vec3 offset;\n    #ifdef HAS_TEX_OFFSETMAP\n        vec4 offMap=texture(texOffsetZ,texCoord);\n\n        #ifdef OFFSET_X_R\n            offset.x=offMap.r;\n        #endif\n        #ifdef OFFSET_X_G\n            offset.x=offMap.g;\n        #endif\n        #ifdef OFFSET_X_B\n            offset.x=offMap.b;\n        #endif\n\n        #ifdef OFFSET_Y_R\n            offset.y=offMap.r;\n        #endif\n        #ifdef OFFSET_Y_G\n            offset.y=offMap.g;\n        #endif\n        #ifdef OFFSET_Y_B\n            offset.y=offMap.b;\n        #endif\n\n        #ifdef OFFSET_Z_R\n            offset.z=offMap.r;\n        #endif\n        #ifdef OFFSET_Z_G\n            offset.z=offMap.g;\n        #endif\n        #ifdef OFFSET_Z_B\n            offset.z=offMap.b;\n        #endif\n        offset*=offMul;\n    #endif\n\n\n\n    float aa=texture(tex,texCoord).r;\n    // float v=(Perlin3D(vec3(p.x,p.y,z)+offset));\n\n\n    float v = 0.0;\n    p.x*=aspect;\n\n    v+=Perlin3D(vec3(p.x,p.y,z)+offset);\n\n    if (harmonics >= 2.0) v += Perlin3D(vec3(p.x,p.y,z)*2.2+offset) * 0.5;\n    if (harmonics >= 3.0) v += Perlin3D(vec3(p.x,p.y,z)*4.3+offset) * 0.25;\n    if (harmonics >= 4.0) v += Perlin3D(vec3(p.x,p.y,z)*8.4+offset) * 0.125;\n    if (harmonics >= 5.0) v += Perlin3D(vec3(p.x,p.y,z)*16.5+offset) * 0.0625;\n\n\n    v*=rangeMul;\n    v=v*0.5+0.5;\n    float v2=v;\n    float v3=v;\n\n    #ifdef RGB\n        v2=Perlin3D(vec3(p.x*2.0,p.y*2.0,z))*0.5+0.5;\n        v3=Perlin3D(vec3(p.x*3.0,p.y*3.0,z))*0.5+0.5;\n    #endif\n\n    vec4 col=vec4(v,v2,v3,1.0);\n\n    float str=1.0;\n    #ifdef HAS_TEX_MASK\n        str=texture(texMask,texCoord).r;\n    #endif\n\n    col=cgl_blend(base,col,amount*str);\n\n\n    #ifdef NO_CHANNEL_R\n        col.r=base.r;\n    #endif\n    #ifdef NO_CHANNEL_G\n        col.g=base.g;\n    #endif\n    #ifdef NO_CHANNEL_B\n        col.b=base.b;\n    #endif\n\n\n\n    outColor=col;\n}\n'};const n=e.inTrigger("render"),a=e.inTexture("Mask"),r=CGL.TextureEffect.AddBlendSelect(e),o=CGL.TextureEffect.AddBlendAlphaMask(e),i=e.inValueSlider("Amount",1),l=e.inSwitch("Color",["Mono","RGB","R","G","B"],"Mono"),s=e.inValue("Scale",22),c=e.inBool("Aspect",false),f=e.inValue("Multiply",1),u=e.inSwitch("Harmonics",["1","2","3","4","5"],"1"),d=e.inValue("X",0),g=e.inValue("Y",0),m=e.inValue("Z",0),p=e.outTrigger("trigger");const x=e.patch.cgl;const h=new CGL.Shader(x,"perlinnoise");e.setPortGroup("Position",[d,g,m]);h.setSource(h.getDefaultVertexShader(),t.perlinnoise3d_frag);const v=new CGL.Uniform(h,"t","tex",0),C=new CGL.Uniform(h,"t","texOffsetZ",1),b=new CGL.Uniform(h,"t","texMask",2),T=new CGL.Uniform(h,"f","z",m),A=new CGL.Uniform(h,"f","x",d),E=new CGL.Uniform(h,"f","y",g),_=new CGL.Uniform(h,"f","scale",s),O=new CGL.Uniform(h,"f","amount",i),S=new CGL.Uniform(h,"f","rangeMul",f);CGL.TextureEffect.setupBlending(e,h,r,i,o);const I=e.inTexture("Offset"),L=e.inFloat("Offset Multiply",1),G=e.inSwitch("Offset X",["None","R","G","B"],"None"),P=e.inSwitch("Offset Y",["None","R","G","B"],"None"),R=e.inSwitch("Offset Z",["None","R","G","B"],"R");e.setPortGroup("Offset Map",[I,R,P,G,L]);const U=new CGL.Uniform(h,"f","offMul",L);const M=new CGL.Uniform(h,"f","aspect",1);const y=new CGL.Uniform(h,"f","harmonics",0);u.onChange=()=>{y.setValue(parseFloat(u.get()))};G.onChange=P.onChange=R.onChange=a.onChange=l.onChange=I.onChange=N;N();function N(){h.toggleDefine("NO_CHANNEL_R",l.get()=="G"||l.get()=="B");h.toggleDefine("NO_CHANNEL_G",l.get()=="R"||l.get()=="B");h.toggleDefine("NO_CHANNEL_B",l.get()=="R"||l.get()=="G");h.toggleDefine("HAS_TEX_OFFSETMAP",I.get());h.toggleDefine("HAS_TEX_MASK",a.get());h.toggleDefine("OFFSET_X_R",G.get()=="R");h.toggleDefine("OFFSET_X_G",G.get()=="G");h.toggleDefine("OFFSET_X_B",G.get()=="B");h.toggleDefine("OFFSET_Y_R",P.get()=="R");h.toggleDefine("OFFSET_Y_G",P.get()=="G");h.toggleDefine("OFFSET_Y_B",P.get()=="B");h.toggleDefine("OFFSET_Z_R",R.get()=="R");h.toggleDefine("OFFSET_Z_G",R.get()=="G");h.toggleDefine("OFFSET_Z_B",R.get()=="B");G.setUiAttribs({greyout:!I.isLinked()});P.setUiAttribs({greyout:!I.isLinked()});R.setUiAttribs({greyout:!I.isLinked()});L.setUiAttribs({greyout:!I.isLinked()});h.toggleDefine("RGB",l.get()=="RGB")}n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(e))return;x.pushShader(h);x.currentTextureEffect.bind();if(c.get())M.setValue(x.currentTextureEffect.getWidth()/x.currentTextureEffect.getHeight());else M.setValue(1);x.setTexture(0,x.currentTextureEffect.getCurrentSourceTexture().tex);if(I.get())x.setTexture(1,I.get().tex);if(a.get())x.setTexture(2,a.get().tex);x.currentTextureEffect.finish();x.popShader();p.trigger()}};Ops.Gl.ImageCompose.Noise.PerlinNoise.prototype=new CABLES.Op;CABLES.OPS["446442ba-1a7e-4c71-bb43-b12005aa6511"]={f:Ops.Gl.ImageCompose.Noise.PerlinNoise,objName:"Ops.Gl.ImageCompose.Noise.PerlinNoise"};Ops.Gl.ImageCompose.ImageCompose_v2=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={imgcomp_frag:"UNI float a;\nvoid main()\n{\n   outColor= vec4(0.0,0.0,0.0,a);\n}\n"};const n=e.inTrigger("Render"),a=e.inBool("Use viewport size",true),r=e.inValueInt("Width",640),o=e.inValueInt("Height",480),i=e.inSwitch("Filter",["nearest","linear","mipmap"],"linear"),l=e.inValueSelect("Wrap",["clamp to edge","repeat","mirrored repeat"],"repeat"),s=e.inValueBool("HDR"),c=e.inValueBool("Transparent",false),f=e.outTrigger("Next"),u=e.outTexture("texture_out"),d=e.outValue("Aspect Ratio");const g=e.patch.cgl;e.setPortGroup("Texture Size",[a,r,o]);e.setPortGroup("Texture Settings",[l,i,s,c]);u.set(CGL.Texture.getEmptyTexture(g,s.get()));let m=null;let p=null;let x=8,h=8;const v=[0,0,0,0];let C=true;let b=CGL.Texture.FILTER_LINEAR;let T=CGL.Texture.WRAP_CLAMP_TO_EDGE;const A=0;const E=0;l.onChange=L;i.onChange=G;n.onTriggered=e.preRender=I;G();L();S();function _(){if(m)m.delete();if(p)p.delete();if(s.get()&&i.get()=="mipmap")e.setUiError("fpmipmap","Don't use mipmap and HDR at the same time, many systems do not support this.");else e.setUiError("fpmipmap",null);m=new CGL.TextureEffect(g,{isFloatingPointTexture:s.get()});p=new CGL.Texture(g,{name:"image_compose_v2_"+e.id,isFloatingPointTexture:s.get(),filter:b,wrap:T,width:Math.ceil(r.get()),height:Math.ceil(o.get())});m.setSourceTexture(p);u.set(CGL.Texture.getEmptyTexture(g,s.get()));C=false}s.onChange=function(){C=true};function O(){if(!m)_();if(a.get()){x=g.getViewPort()[2];h=g.getViewPort()[3]}else{x=Math.ceil(r.get());h=Math.ceil(o.get())}d.set(x/h);if((x!=p.width||h!=p.height)&&(x!==0&&h!==0)){p.setSize(x,h);m.setSourceTexture(p);u.set(CGL.Texture.getEmptyTexture(g,s.get()));u.set(p)}}function S(){r.setUiAttribs({greyout:a.get()});o.setUiAttribs({greyout:a.get()})}a.onChange=function(){S()};e.preRender=function(){I()};function I(){if(!m||C)_();const e=g.getViewPort();v[0]=e[0];v[1]=e[1];v[2]=e[2];v[3]=e[3];g.pushBlend(false);O();const t=g.currentTextureEffect;g.currentTextureEffect=m;g.currentTextureEffect.width=r.get();g.currentTextureEffect.height=o.get();m.setSourceTexture(p);let n=CGL.Texture.getBlackTexture(g);if(c.get())n=CGL.Texture.getEmptyTexture(g,s.get());m.startEffect(n);f.trigger();u.set(m.getCurrentSourceTexture());m.endEffect();g.setViewPort(v[0],v[1],v[2],v[3]);g.popBlend(false);g.currentTextureEffect=t}function L(){if(l.get()=="repeat")T=CGL.Texture.WRAP_REPEAT;if(l.get()=="mirrored repeat")T=CGL.Texture.WRAP_MIRRORED_REPEAT;if(l.get()=="clamp to edge")T=CGL.Texture.WRAP_CLAMP_TO_EDGE;C=true}function G(){if(i.get()=="nearest")b=CGL.Texture.FILTER_NEAREST;if(i.get()=="linear")b=CGL.Texture.FILTER_LINEAR;if(i.get()=="mipmap")b=CGL.Texture.FILTER_MIPMAP;C=true}};Ops.Gl.ImageCompose.ImageCompose_v2.prototype=new CABLES.Op;CABLES.OPS["a5b43d4c-a9ea-4eaf-9ed0-f257d222659d"]={f:Ops.Gl.ImageCompose.ImageCompose_v2,objName:"Ops.Gl.ImageCompose.ImageCompose_v2"};Ops.Anim.Timer_v2=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={};const o=e.inValue("Speed",1),n=e.inValueBool("Play",true),a=e.inTriggerButton("Reset"),r=e.inValueBool("Sync to timeline",false),i=e.outNumber("Time");e.setPortGroup("Controls",[n,a,o]);const l=new CABLES.Timer;let s=null;let c=0;let f=false;n.onChange=u;u();function u(){if(n.get()){l.play();e.patch.addOnAnimFrame(e)}else{l.pause();e.patch.removeOnAnimFrame(e)}}a.onTriggered=d;function d(){c=0;s=null;l.setTime(0);i.set(0)}r.onChange=function(){f=r.get();n.setUiAttribs({greyout:f});a.setUiAttribs({greyout:f})};e.onAnimFrame=function(e,t,n){if(l.isPlaying()){if(CABLES.overwriteTime!==undefined){i.set(CABLES.overwriteTime*o.get())}else if(f){i.set(e*o.get())}else{l.update();const a=l.get();if(s===null){s=a;return}const r=Math.abs(a-s);s=a;c+=r*o.get();if(c!=c)c=0;i.set(c)}}}};Ops.Anim.Timer_v2.prototype=new CABLES.Op;CABLES.OPS["aac7f721-208f-411a-adb3-79adae2e471a"]={f:Ops.Anim.Timer_v2,objName:"Ops.Anim.Timer_v2"};Ops.Gl.Shader.BasicMaterial_v3=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={basicmaterial_frag:"{{MODULES_HEAD}}\n\nIN vec2 texCoord;\n\n#ifdef VERTEX_COLORS\nIN vec4 vertCol;\n#endif\n\n#ifdef HAS_TEXTURES\n    IN vec2 texCoordOrig;\n    #ifdef HAS_TEXTURE_DIFFUSE\n        UNI sampler2D tex;\n    #endif\n    #ifdef HAS_TEXTURE_OPACITY\n        UNI sampler2D texOpacity;\n   #endif\n#endif\n\n\n\nvoid main()\n{\n    {{MODULE_BEGIN_FRAG}}\n    vec4 col=color;\n\n\n    #ifdef HAS_TEXTURES\n        vec2 uv=texCoord;\n\n        #ifdef CROP_TEXCOORDS\n            if(uv.x<0.0 || uv.x>1.0 || uv.y<0.0 || uv.y>1.0) discard;\n        #endif\n\n        #ifdef HAS_TEXTURE_DIFFUSE\n            col=texture(tex,uv);\n\n            #ifdef COLORIZE_TEXTURE\n                col.r*=color.r;\n                col.g*=color.g;\n                col.b*=color.b;\n            #endif\n        #endif\n        col.a*=color.a;\n        #ifdef HAS_TEXTURE_OPACITY\n            #ifdef TRANSFORMALPHATEXCOORDS\n                uv=texCoordOrig;\n            #endif\n            #ifdef ALPHA_MASK_IR\n                col.a*=1.0-texture(texOpacity,uv).r;\n            #endif\n            #ifdef ALPHA_MASK_IALPHA\n                col.a*=1.0-texture(texOpacity,uv).a;\n            #endif\n            #ifdef ALPHA_MASK_ALPHA\n                col.a*=texture(texOpacity,uv).a;\n            #endif\n            #ifdef ALPHA_MASK_LUMI\n                col.a*=dot(vec3(0.2126,0.7152,0.0722), texture(texOpacity,uv).rgb);\n            #endif\n            #ifdef ALPHA_MASK_R\n                col.a*=texture(texOpacity,uv).r;\n            #endif\n            #ifdef ALPHA_MASK_G\n                col.a*=texture(texOpacity,uv).g;\n            #endif\n            #ifdef ALPHA_MASK_B\n                col.a*=texture(texOpacity,uv).b;\n            #endif\n            // #endif\n        #endif\n    #endif\n\n    {{MODULE_COLOR}}\n\n    #ifdef DISCARDTRANS\n        if(col.a<0.2) discard;\n    #endif\n\n    #ifdef VERTEX_COLORS\n        col*=vertCol;\n    #endif\n\n    outColor = col;\n}\n",basicmaterial_vert:"\n{{MODULES_HEAD}}\n\nOUT vec2 texCoord;\nOUT vec2 texCoordOrig;\n\nUNI mat4 projMatrix;\nUNI mat4 modelMatrix;\nUNI mat4 viewMatrix;\n\n#ifdef HAS_TEXTURES\n    UNI float diffuseRepeatX;\n    UNI float diffuseRepeatY;\n    UNI float texOffsetX;\n    UNI float texOffsetY;\n#endif\n\n#ifdef VERTEX_COLORS\n    in vec4 attrVertColor;\n    out vec4 vertCol;\n\n#endif\n\n\nvoid main()\n{\n    mat4 mMatrix=modelMatrix;\n    mat4 modelViewMatrix;\n\n    norm=attrVertNormal;\n    texCoordOrig=attrTexCoord;\n    texCoord=attrTexCoord;\n    #ifdef HAS_TEXTURES\n        texCoord.x=texCoord.x*diffuseRepeatX+texOffsetX;\n        texCoord.y=(1.0-texCoord.y)*diffuseRepeatY+texOffsetY;\n    #endif\n\n    #ifdef VERTEX_COLORS\n        vertCol=attrVertColor;\n    #endif\n\n    vec4 pos = vec4(vPosition, 1.0);\n\n    #ifdef BILLBOARD\n       vec3 position=vPosition;\n       modelViewMatrix=viewMatrix*modelMatrix;\n\n       gl_Position = projMatrix * modelViewMatrix * vec4((\n           position.x * vec3(\n               modelViewMatrix[0][0],\n               modelViewMatrix[1][0],\n               modelViewMatrix[2][0] ) +\n           position.y * vec3(\n               modelViewMatrix[0][1],\n               modelViewMatrix[1][1],\n               modelViewMatrix[2][1]) ), 1.0);\n    #endif\n\n    {{MODULE_VERTEX_POSITION}}\n\n    #ifndef BILLBOARD\n        modelViewMatrix=viewMatrix * mMatrix;\n\n        {{MODULE_VERTEX_MODELVIEW}}\n\n    #endif\n\n    // mat4 modelViewMatrix=viewMatrix*mMatrix;\n\n    #ifndef BILLBOARD\n        // gl_Position = projMatrix * viewMatrix * modelMatrix * pos;\n        gl_Position = projMatrix * modelViewMatrix * pos;\n    #endif\n}\n"};const n=e.inTrigger("render");const a=e.outTrigger("trigger");const r=e.outObject("shader",null,"shader");r.ignoreValueSerialize=true;e.toWorkPortsNeedToBeLinked(n);e.toWorkShouldNotBeChild("Ops.Gl.TextureEffects.ImageCompose",CABLES.OP_PORT_TYPE_FUNCTION);const o=e.patch.cgl;const i=new CGL.Shader(o,"basicmaterialnew",this);i.addAttribute({type:"vec3",name:"vPosition"});i.addAttribute({type:"vec2",name:"attrTexCoord"});i.addAttribute({type:"vec3",name:"attrVertNormal",nameFrag:"norm"});i.addAttribute({type:"float",name:"attrVertIndex"});i.setModules(["MODULE_VERTEX_POSITION","MODULE_COLOR","MODULE_BEGIN_FRAG","MODULE_VERTEX_MODELVIEW"]);i.setSource(t.basicmaterial_vert,t.basicmaterial_frag);r.setRef(i);n.onTriggered=I;const l=e.inValueSlider("r",Math.random());const s=e.inValueSlider("g",Math.random());const c=e.inValueSlider("b",Math.random());const f=e.inValueSlider("a",1);l.setUiAttribs({colorPick:true});const u=i.addUniformFrag("4f","color",l,s,c,f);i.uniformColorDiffuse=u;const d=e.inTexture("texture");let g=null;d.onChange=G;const m=e.inValueBool("colorizeTexture",false);const p=e.inValueBool("Vertex Colors",false);const x=e.inTexture("textureOpacity");let h=null;const v=e.inSwitch("Alpha Mask Source",["Luminance","R","G","B","A","1-A","1-R"],"Luminance");v.setUiAttribs({greyout:true});x.onChange=L;const C=e.inValueBool("Opacity TexCoords Transform",false);const b=e.inValueBool("Discard Transparent Pixels");const T=e.inValue("diffuseRepeatX",1),A=e.inValue("diffuseRepeatY",1),E=e.inValue("Tex Offset X",0),_=e.inValue("Tex Offset Y",0),O=e.inBool("Crop TexCoords",false);i.addUniformFrag("f","diffuseRepeatX",T);i.addUniformFrag("f","diffuseRepeatY",A);i.addUniformFrag("f","texOffsetX",E);i.addUniformFrag("f","texOffsetY",_);const S=e.inValueBool("billboard",false);v.onChange=S.onChange=b.onChange=C.onChange=O.onChange=p.onChange=m.onChange=R;e.setPortGroup("Color",[l,s,c,f]);e.setPortGroup("Color Texture",[d,p,m]);e.setPortGroup("Opacity",[x,v,b,C]);e.setPortGroup("Texture Transform",[T,A,E,_,O]);L();G();e.preRender=function(){i.bind();I()};function I(){if(!i)return;o.pushShader(i);i.popTextures();if(g&&d.get())i.pushTexture(g,d.get());if(h&&x.get())i.pushTexture(h,x.get());a.trigger();o.popShader()}function L(){if(x.get()){if(h!==null)return;i.removeUniform("texOpacity");i.define("HAS_TEXTURE_OPACITY");if(!h)h=new CGL.Uniform(i,"t","texOpacity")}else{i.removeUniform("texOpacity");i.removeDefine("HAS_TEXTURE_OPACITY");h=null}R()}function G(){if(d.get()){if(!i.hasDefine("HAS_TEXTURE_DIFFUSE"))i.define("HAS_TEXTURE_DIFFUSE");if(!g)g=new CGL.Uniform(i,"t","texDiffuse")}else{i.removeUniform("texDiffuse");i.removeDefine("HAS_TEXTURE_DIFFUSE");g=null}P()}function P(){const e=d.isLinked()||x.isLinked();T.setUiAttribs({greyout:!e});A.setUiAttribs({greyout:!e});E.setUiAttribs({greyout:!e});_.setUiAttribs({greyout:!e});m.setUiAttribs({greyout:!e});v.setUiAttribs({greyout:!x.get()});C.setUiAttribs({greyout:!x.get()});let t=true;t=d.get()&&!m.get();l.setUiAttribs({greyout:t});s.setUiAttribs({greyout:t});c.setUiAttribs({greyout:t})}function R(){i.toggleDefine("VERTEX_COLORS",p.get());i.toggleDefine("CROP_TEXCOORDS",O.get());i.toggleDefine("COLORIZE_TEXTURE",m.get());i.toggleDefine("TRANSFORMALPHATEXCOORDS",C.get());i.toggleDefine("DISCARDTRANS",b.get());i.toggleDefine("BILLBOARD",S.get());i.toggleDefine("ALPHA_MASK_ALPHA",v.get()=="A");i.toggleDefine("ALPHA_MASK_IALPHA",v.get()=="1-A");i.toggleDefine("ALPHA_MASK_IR",v.get()=="1-R");i.toggleDefine("ALPHA_MASK_LUMI",v.get()=="Luminance");i.toggleDefine("ALPHA_MASK_R",v.get()=="R");i.toggleDefine("ALPHA_MASK_G",v.get()=="G");i.toggleDefine("ALPHA_MASK_B",v.get()=="B");P()}};Ops.Gl.Shader.BasicMaterial_v3.prototype=new CABLES.Op;CABLES.OPS["ec55d252-3843-41b1-b731-0482dbd9e72b"]={f:Ops.Gl.Shader.BasicMaterial_v3,objName:"Ops.Gl.Shader.BasicMaterial_v3"};Ops.Extension.Deprecated.Sequence34=function(){CABLES.Op.apply(this,arguments);const n=this;const e=n.attachments={};const t=n.inTrigger("exe");let a=[];let r=[];let o=function(){for(let e=0;e<r.length;e++)r[e].trigger()};t.onTriggered=o;let i=16;for(let t=0;t<i;t++){r.push(n.addOutPort(new CABLES.Port(n,"trigger "+t,CABLES.OP_PORT_TYPE_FUNCTION)));if(t<i-1){let e=n.addInPort(new CABLES.Port(n,"exe "+t,CABLES.OP_PORT_TYPE_FUNCTION));e.onTriggered=o;a.push(e)}}};Ops.Extension.Deprecated.Sequence34.prototype=new CABLES.Op;CABLES.OPS["641934f6-5143-4a6b-b592-08ab26e2cab0"]={f:Ops.Extension.Deprecated.Sequence34,objName:"Ops.Extension.Deprecated.Sequence34"};Ops.Gl.RenderToTexture=function(){CABLES.Op.apply(this,arguments);const r=this;const e=r.attachments={};const o=r.patch.cgl;const t=r.inTrigger("render"),n=r.inValueBool("use viewport size",true),a=r.inValueInt("texture width",512),i=r.inValueInt("texture height",512),l=r.inBool("Auto Aspect",false),s=r.inSwitch("filter",["nearest","linear","mipmap"],"linear"),c=r.inSwitch("Wrap",["Clamp","Repeat","Mirror"],"Repeat"),f=r.inSwitch("MSAA",["none","2x","4x","8x"],"none"),u=r.outTrigger("trigger"),d=r.outTexture("texture"),g=r.outTexture("textureDepth"),m=r.inValueBool("HDR"),p=r.inValueBool("Depth",true),x=r.inValueBool("Clear",true);let h=null;let v=true;d.set(CGL.Texture.getEmptyTexture(o));r.setPortGroup("Size",[n,a,i,l]);const C=[0,0,0,0];m.setUiAttribs({title:"Pixelformat Float 32bit"});m.onChange=p.onChange=x.onChange=s.onChange=c.onChange=f.onChange=T;n.onChange=b;t.onTriggered=r.preRender=A;b();function b(){a.setUiAttribs({greyout:n.get()});i.setUiAttribs({greyout:n.get()});l.setUiAttribs({greyout:n.get()})}function T(){v=true}function A(){const e=o.getViewPort();C[0]=e[0];C[1]=e[1];C[2]=e[2];C[3]=e[3];if(!h||v){if(h)h.delete();let n=CGL.Texture.WRAP_REPEAT;if(c.get()=="Clamp")n=CGL.Texture.WRAP_CLAMP_TO_EDGE;else if(c.get()=="Mirror")n=CGL.Texture.WRAP_MIRRORED_REPEAT;let a=CGL.Texture.FILTER_NEAREST;if(s.get()=="nearest")a=CGL.Texture.FILTER_NEAREST;else if(s.get()=="linear")a=CGL.Texture.FILTER_LINEAR;else if(s.get()=="mipmap")a=CGL.Texture.FILTER_MIPMAP;if(m.get()&&s.get()=="mipmap")r.setUiError("fpmipmap","Don't use mipmap and HDR at the same time, many systems do not support this.");else r.setUiError("fpmipmap",null);if(o.glVersion>=2){let e=true;let t=4;if(f.get()=="none"){t=0;e=false}if(f.get()=="2x")t=2;if(f.get()=="4x")t=4;if(f.get()=="8x")t=8;h=new CGL.Framebuffer2(o,8,8,{name:"render2texture "+r.id,isFloatingPointTexture:m.get(),multisampling:e,wrap:n,filter:a,depth:p.get(),multisamplingSamples:t,clear:x.get()})}else{h=new CGL.Framebuffer(o,8,8,{isFloatingPointTexture:m.get(),clear:x.get()});console.log("WEBGL1!!!",h,h.valid)}if(h&&h.valid){g.set(h.getTextureDepth());v=false}else{h=null;v=true}}if(n.get()){a.set(o.getViewPort()[2]);i.set(o.getViewPort()[3])}if(h.getWidth()!=Math.ceil(a.get())||h.getHeight()!=Math.ceil(i.get())){h.setSize(Math.max(1,Math.ceil(a.get())),Math.max(1,Math.ceil(i.get())))}h.renderStart(o);if(l.get())mat4.perspective(o.pMatrix,45,a.get()/i.get(),.1,1e3);u.trigger();h.renderEnd(o);o.setViewPort(C[0],C[1],C[2],C[3]);g.setRef(h.getTextureDepth());d.setRef(h.getTextureColor())}};Ops.Gl.RenderToTexture.prototype=new CABLES.Op;CABLES.OPS["d01fa820-396c-4cb5-9d78-6b14762852af"]={f:Ops.Gl.RenderToTexture,objName:"Ops.Gl.RenderToTexture"};Ops.Gl.Matrix.Transform=function(){CABLES.Op.apply(this,arguments);const n=this;const e=n.attachments={};const t=n.inTrigger("render"),a=n.inValue("posX",0),r=n.inValue("posY",0),o=n.inValue("posZ",0),i=n.inValue("scale",1),l=n.inValue("rotX",0),s=n.inValue("rotY",0),c=n.inValue("rotZ",0),f=n.outTrigger("trigger");n.setPortGroup("Rotation",[l,s,c]);n.setPortGroup("Position",[a,r,o]);n.setPortGroup("Scale",[i]);n.setUiAxisPorts(a,r,o);n.toWorkPortsNeedToBeLinked(t,f);const u=vec3.create();const d=vec3.create();const g=mat4.create();mat4.identity(g);let m=false,p=false,x=true,h=true,v=true;l.onChange=s.onChange=c.onChange=_;a.onChange=r.onChange=o.onChange=A;i.onChange=E;t.onTriggered=function(){let e=false;if(x){b();e=true}if(h){T();e=true}if(v)e=true;if(e)C();const t=n.patch.cg||n.patch.cgl;t.pushModelMatrix();mat4.multiply(t.mMatrix,t.mMatrix,g);f.trigger();t.popModelMatrix();if(CABLES.UI){if(!a.isLinked()&&!r.isLinked()&&!o.isLinked()){gui.setTransform(n.id,a.get(),r.get(),o.get());if(n.isCurrentUiOp())gui.setTransformGizmo({posX:a,posY:r,posZ:o})}}};function C(){mat4.identity(g);if(p)mat4.translate(g,g,u);if(l.get()!==0)mat4.rotateX(g,g,l.get()*CGL.DEG2RAD);if(s.get()!==0)mat4.rotateY(g,g,s.get()*CGL.DEG2RAD);if(c.get()!==0)mat4.rotateZ(g,g,c.get()*CGL.DEG2RAD);if(m)mat4.scale(g,g,d);v=false}function b(){p=false;if(a.get()!==0||r.get()!==0||o.get()!==0)p=true;vec3.set(u,a.get(),r.get(),o.get());x=false}function T(){m=true;vec3.set(d,i.get(),i.get(),i.get());h=false}function A(){x=true}function E(){h=true}function _(){v=true}C()};Ops.Gl.Matrix.Transform.prototype=new CABLES.Op;CABLES.OPS["650baeb1-db2d-4781-9af6-ab4e9d4277be"]={f:Ops.Gl.Matrix.Transform,objName:"Ops.Gl.Matrix.Transform"};Ops.Gl.Meshes.Circle=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={};const n=e.inTrigger("render"),P=e.inValue("radius",.5),R=e.inValueSlider("innerRadius",0),M=e.inValueInt("segments",40),y=e.inValueSlider("percent",1),N=e.inValue("steps",0),U=e.inValueBool("invertSteps",false),w=e.inSwitch("mapping",["flat","round"]),B=e.inValueBool("Spline",false),a=e.inValueBool("Draw",true),r=e.outTrigger("trigger"),D=e.outObject("geometry",null,"geometry");e.setPortGroup("Size",[P,R]);e.setPortGroup("Display",[y,N,U]);w.set("flat");w.onChange=M.onChange=P.onChange=R.onChange=y.onChange=N.onChange=U.onChange=B.onChange=f;D.ignoreValueSerialize=true;const F=e.patch.cgl;let V=new CGL.Geometry("circle");let z=null;const o=-1;let i=0;let l=null;let X=true;n.onTriggered=s;e.preRender=()=>{s()};function s(){if(!CGL.TextureEffect.checkOpNotInTextureEffect(e))return;if(X)c();l=F.getShader();if(!l)return;i=l.glPrimitive;if(B.get())l.glPrimitive=F.gl.LINE_STRIP;if(a.get())z.render(l);r.trigger();l.glPrimitive=i}function c(){const n=Math.max(3,Math.floor(M.get()));V.clear();const t=[];const a=[];const r=[];const o=[];const i=[];let l=0,s=0;let c=0,f=0;let u=0,d=0;let g=0,m=0;let p=0,x=0;let h=0,v=0;let C=0,b=0;let T=0,A=0;const E=Math.max(0,y.get());const _=[];if(B.get()){let e=0;let t=0;const O=[];for(l=0;l<=n*E;l++){s=360/n*l*CGL.DEG2RAD;T=Math.cos(s)*P.get();A=Math.sin(s)*P.get();b=.5;if(l>0){_.push(e);_.push(t);_.push(0);C=1-(l-1)/n;O.push(C,b)}_.push(T);_.push(A);_.push(0);e=T;t=A}V.setPointVertices(_)}else if(R.get()<=0){for(l=0;l<=n*E;l++){s=360/n*l*CGL.DEG2RAD;T=Math.cos(s)*P.get();A=Math.sin(s)*P.get();if(w.get()=="flat"){C=(Math.cos(s)+1)/2;b=1-(Math.sin(s)+1)/2;h=.5;v=.5}else if(w.get()=="round"){C=1-l/n;b=0;h=C;v=1}t.push([T,A,0],[c,f,0],[0,0,0]);a.push(C,b,u,d,h,v);r.push(0,0,1,0,0,1,0,0,1);o.push(1,0,0,1,0,0,1,0,0);i.push(0,1,0,0,1,0,0,1,0);u=C;d=b;c=T;f=A}V=CGL.Geometry.buildFromFaces(t,"circle");V.vertexNormals=r;V.tangents=o;V.biTangents=i;V.texCoords=a}else{let e=0;const S=n*E;const I=0;for(l=0;l<=S;l++){e++;s=360/n*l*CGL.DEG2RAD;T=Math.cos(s)*P.get();A=Math.sin(s)*P.get();const L=Math.cos(s)*R.get()*P.get();const G=Math.sin(s)*R.get()*P.get();if(w.get()=="round"){C=1-l/n;b=0;h=C;v=1}if(N.get()===0||e%parseInt(N.get(),10)===0&&!U.get()||e%parseInt(N.get(),10)!==0&&U.get()){t.push([T,A,0],[c,f,0],[L,G,0]);t.push([L,G,0],[c,f,0],[g,m,0]);a.push(C,0,u,0,h,1,C,1,u,0,p,1);r.push(0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1);o.push(1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0);i.push(0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0)}p=h;x=v;u=C;d=b;c=T;f=A;g=L;m=G}V=CGL.Geometry.buildFromFaces(t,"circle");V.vertexNormals=r;V.tangents=o;V.biTangents=i;if(w.get()=="flat")V.mapTexCoords2d();else V.texCoords=a}D.set(null);D.set(V);if(V.vertices.length==0)return;if(z)z.dispose();z=null;z=new CGL.Mesh(F,V);X=false}function f(){X=true}e.onDelete=function(){if(z)z.dispose()}};Ops.Gl.Meshes.Circle.prototype=new CABLES.Op;CABLES.OPS["4db917cc-2cef-43f4-83d5-38c4572fe943"]={f:Ops.Gl.Meshes.Circle,objName:"Ops.Gl.Meshes.Circle"};Ops.Gl.Meshes.FullscreenRectangle=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={shader_frag:"UNI sampler2D tex;\nIN vec2 texCoord;\n\nvoid main()\n{\n    outColor= texture(tex,texCoord);\n}\n\n",shader_vert:"{{MODULES_HEAD}}\n\nIN vec3 vPosition;\nUNI mat4 projMatrix;\nUNI mat4 mvMatrix;\n\nOUT vec2 texCoord;\nIN vec2 attrTexCoord;\n\nvoid main()\n{\n   vec4 pos=vec4(vPosition,  1.0);\n\n   texCoord=vec2(attrTexCoord.x,(1.0-attrTexCoord.y));\n\n   gl_Position = projMatrix * mvMatrix * pos;\n}\n"};const n=e.inTrigger("render"),a=e.inSwitch("Scale",["Stretch","Fit"],"Fit"),r=e.inValueBool("Flip Y"),o=e.inValueBool("Flip X"),i=e.inTexture("Texture"),l=e.outTrigger("trigger");const s=e.patch.cgl;let c=null;let f=new CGL.Geometry("fullscreen rectangle");let u=0,d=0,g=0,m=0,p=0;e.toWorkShouldNotBeChild("Ops.Gl.TextureEffects.ImageCompose",CABLES.OP_PORT_TYPE_FUNCTION);e.toWorkPortsNeedToBeLinked(n);o.onChange=O;r.onChange=O;n.onTriggered=_;i.onLinkChanged=T;a.onChange=E;const x=new CGL.Shader(s,"fullscreenrectangle",this);x.setModules(["MODULE_VERTEX_POSITION","MODULE_COLOR","MODULE_BEGIN_FRAG"]);x.setSource(t.shader_vert,t.shader_frag);x.fullscreenRectUniform=new CGL.Uniform(x,"t","tex",0);x.aspectUni=new CGL.Uniform(x,"f","aspectTex",0);let h=false;let v=true;let C=false;let b=[];T();E();i.onChange=function(){v=true};function T(){if(!CABLES.UI)return;r.setUiAttribs({greyout:!i.isLinked()});o.setUiAttribs({greyout:!i.isLinked()});a.setUiAttribs({greyout:!i.isLinked()})}function A(){let e=i.get();if(e)h=true;else h=false}e.preRender=function(){A();x.bind();if(c)c.render(x);_()};function E(){C=a.get()=="Fit"}function _(){if(s.getViewPort()[2]!=m||s.getViewPort()[3]!=p||!c)S();if(v)A();s.pushPMatrix();mat4.identity(s.pMatrix);mat4.ortho(s.pMatrix,0,m,p,0,-10,1e3);s.pushModelMatrix();mat4.identity(s.mMatrix);s.pushViewMatrix();mat4.identity(s.vMatrix);if(C&&i.get()){const n=i.get().width/i.get().height;let e=p;let t=p*n;if(t>m){e=m*1/n;t=m}b[0]=s.getViewPort()[0];b[1]=s.getViewPort()[1];b[2]=s.getViewPort()[2];b[3]=s.getViewPort()[3];s.setViewPort((m-t)/2,(p-e)/2,t,e)}if(h){if(i.get())s.setTexture(0,i.get().tex);c.render(x)}else{c.render(s.getShader())}s.gl.clear(s.gl.DEPTH_BUFFER_BIT);s.popPMatrix();s.popModelMatrix();s.popViewMatrix();if(C&&i.get())s.setViewPort(b[0],b[1],b[2],b[3]);l.trigger()}function O(){c=null}function S(){const e=s.getViewPort();if(e[2]==m&&e[3]==p&&c)return;let t=0,n=0;m=e[2];p=e[3];f.vertices=new Float32Array([t+m,n+p,0,t,n+p,0,t+m,n,0,t,n,0]);let a=null;if(r.get())a=new Float32Array([1,0,0,0,1,1,0,1]);else a=new Float32Array([1,1,0,1,1,0,0,0]);if(o.get()){a[0]=0;a[2]=1;a[4]=0;a[6]=1}f.setTexCoords(a);f.verticesIndices=new Uint16Array([2,1,0,3,1,2]);f.vertexNormals=new Float32Array([0,0,1,0,0,1,0,0,1,0,0,1]);f.tangents=new Float32Array([-1,0,0,-1,0,0,-1,0,0,-1,0,0]);f.biTangents==new Float32Array([0,-1,0,0,-1,0,0,-1,0,0,-1,0]);if(!c)c=new CGL.Mesh(s,f);else c.setGeom(f)}};Ops.Gl.Meshes.FullscreenRectangle.prototype=new CABLES.Op;CABLES.OPS["255bd15b-cc91-4a12-9b4e-53c710cbb282"]={f:Ops.Gl.Meshes.FullscreenRectangle,objName:"Ops.Gl.Meshes.FullscreenRectangle"};Ops.Gl.ImageCompose.DrawImage=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={drawimage_frag:"#ifdef HAS_TEXTURES\n  IN vec2 texCoord;\n  UNI sampler2D tex;\n  UNI sampler2D image;\n#endif\n\nIN mat3 transform;\nUNI float rotate;\n\n{{CGL.BLENDMODES}}\n\n#ifdef HAS_TEXTUREALPHA\n   UNI sampler2D imageAlpha;\n#endif\n\nUNI float amount;\n\nvoid main()\n{\n   vec4 blendRGBA=vec4(0.0,0.0,0.0,1.0);\n   #ifdef HAS_TEXTURES\n       vec2 tc=texCoord;\n\n       #ifdef TEX_FLIP_X\n           tc.x=1.0-tc.x;\n       #endif\n       #ifdef TEX_FLIP_Y\n           tc.y=1.0-tc.y;\n       #endif\n\n       #ifdef TEX_TRANSFORM\n           vec3 coordinates=vec3(tc.x, tc.y,1.0);\n           tc=(transform * coordinates ).xy;\n       #endif\n\n       blendRGBA=texture(image,tc);\n\n       vec3 blend=blendRGBA.rgb;\n       vec4 baseRGBA=texture(tex,texCoord);\n       vec3 base=baseRGBA.rgb;\n\n       vec3 colNew=_blend(base,blend);\n\n       #ifdef REMOVE_ALPHA_SRC\n           blendRGBA.a=1.0;\n       #endif\n\n       #ifdef HAS_TEXTUREALPHA\n           vec4 colImgAlpha=texture(imageAlpha,texCoord);\n           float colImgAlphaAlpha=colImgAlpha.a;\n\n           #ifdef ALPHA_FROM_LUMINANCE\n               vec3 gray = vec3(dot(vec3(0.2126,0.7152,0.0722), colImgAlpha.rgb ));\n               colImgAlphaAlpha=(gray.r+gray.g+gray.b)/3.0;\n           #endif\n\n           blendRGBA.a=colImgAlphaAlpha*blendRGBA.a;\n\n           #ifdef INVERT_ALPHA\n           blendRGBA.a=1.0-blendRGBA.a;\n           #endif\n       #endif\n\n\n   #endif\n\n   blendRGBA.rgb=mix( colNew, base ,1.0-blendRGBA.a*amount);\n   blendRGBA.a=1.0;\n\n\n   outColor= blendRGBA;\n}",drawimage_vert:"IN vec3 vPosition;\nIN vec2 attrTexCoord;\nIN vec3 attrVertNormal;\nOUT vec2 texCoord;\nOUT vec3 norm;\nUNI mat4 projMatrix;\nUNI mat4 mvMatrix;\n\nUNI float posX;\nUNI float posY;\nUNI float scale;\nUNI float rotate;\n\nOUT mat3 transform;\n\nvoid main()\n{\n    texCoord=attrTexCoord;\n    norm=attrVertNormal;\n\n    #ifdef TEX_TRANSFORM\n    vec3 coordinates=vec3(attrTexCoord.x, attrTexCoord.y,1.0);\n    float angle = radians( rotate );\n    vec2 scale= vec2(scale,scale);\n    vec2 translate= vec2(posX,posY);\n\n    transform = mat3(   scale.x * cos( angle ), scale.x * sin( angle ), 0.0,\n                        - scale.y * sin( angle ), scale.y * cos( angle ), 0.0,\n                        - 0.5 * scale.x * cos( angle ) + 0.5 * scale.y * sin( angle ) - 0.5 * translate.x*2.0 + 0.5,  - 0.5 * scale.x * sin( angle ) - 0.5 * scale.y * cos( angle ) - 0.5 * translate.y*2.0 + 0.5, 1.0);\n    #endif\n\n    gl_Position = projMatrix * mvMatrix * vec4(vPosition,  1.0);\n}"};const n=e.inTrigger("render");const a=e.inFloatSlider("amount");const r=CGL.TextureEffect.AddBlendSelect(e,"blendMode");const o=e.inTexture("image");const i=e.inTexture("imageAlpha");const l=e.inValueSelect("alphaSrc",["alpha channel","luminance"]);const s=e.inValueBool("removeAlphaSrc");const c=e.inValueBool("invert alpha channel");const f=e.outTrigger("trigger");e.toWorkPortsNeedToBeLinked(o);r.set("normal");const u=e.patch.cgl;const d=new CGL.Shader(u,"drawimage");a.set(1);n.onTriggered=C;d.setSource(t.drawimage_vert,t.drawimage_frag);const g=new CGL.Uniform(d,"t","tex",0);const m=new CGL.Uniform(d,"t","image",1);const p=new CGL.Uniform(d,"t","imageAlpha",2);c.onChange=function(){if(c.get())d.define("INVERT_ALPHA");else d.removeDefine("INVERT_ALPHA")};s.onChange=function(){if(s.get())d.define("REMOVE_ALPHA_SRC");else d.removeDefine("REMOVE_ALPHA_SRC")};s.set(true);l.onChange=function(){if(l.get()=="luminance")d.define("ALPHA_FROM_LUMINANCE");else d.removeDefine("ALPHA_FROM_LUMINANCE")};l.set("alpha channel");{const b=e.inValueBool("flip x");const T=e.inValueBool("flip y");b.onChange=function(){if(b.get())d.define("TEX_FLIP_X");else d.removeDefine("TEX_FLIP_X")};T.onChange=function(){if(T.get())d.define("TEX_FLIP_Y");else d.removeDefine("TEX_FLIP_Y")}}{const A=e.inValueFloat("scale");const E=e.inValueFloat("pos x");const _=e.inValueFloat("pos y");const O=e.inValueFloat("rotate");A.set(1);const S=new CGL.Uniform(d,"f","scale",A.get());const I=new CGL.Uniform(d,"f","posX",E.get());const L=new CGL.Uniform(d,"f","posY",_.get());const G=new CGL.Uniform(d,"f","rotate",O.get());function x(){if(A.get()!=1||E.get()!=0||_.get()!=0||O.get()!=0){if(!d.hasDefine("TEX_TRANSFORM"))d.define("TEX_TRANSFORM");S.setValue(parseFloat(A.get()));I.setValue(E.get());L.setValue(_.get());G.setValue(O.get())}else{}}A.onChange=x;E.onChange=x;_.onChange=x;O.onChange=x}CGL.TextureEffect.setupBlending(e,d,r,a);const h=new CGL.Uniform(d,"f","amount",a);let v=false;function C(){if(i.get()&&!v||!i.get()&&v){if(i.get()&&i.get().tex){d.define("HAS_TEXTUREALPHA");v=true}else{d.removeDefine("HAS_TEXTUREALPHA");v=false}}if(o.get()&&o.get().tex&&a.get()>0){u.pushShader(d);u.currentTextureEffect.bind();u.setTexture(0,u.currentTextureEffect.getCurrentSourceTexture().tex);if(o.get()&&o.get().tex)u.setTexture(1,o.get().tex);else u.setTexture(1,null);if(i.get()&&i.get().tex)u.setTexture(2,i.get().tex);else u.setTexture(2,null);u.currentTextureEffect.finish();u.popShader()}f.trigger()}};Ops.Gl.ImageCompose.DrawImage.prototype=new CABLES.Op;CABLES.OPS["8248b866-9492-48c8-897d-3097c6fe6fe8"]={f:Ops.Gl.ImageCompose.DrawImage,objName:"Ops.Gl.ImageCompose.DrawImage"};Ops.Gl.ImageCompose.Color=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={color_frag:"IN vec2 texCoord;\nUNI sampler2D tex;\nUNI float r;\nUNI float g;\nUNI float b;\nUNI float amount;\n\n#ifdef MASK\n    UNI sampler2D mask;\n#endif\n\n{{CGL.BLENDMODES}}\n\nvoid main()\n{\n    vec4 col=vec4(r,g,b,1.0);\n    vec4 base=texture(tex,texCoord);\n\n    float am=amount;\n    #ifdef MASK\n        float msk=texture(mask,texCoord).r;\n        #ifdef INVERTMASK\n            msk=1.0-msk;\n        #endif\n        am*=1.0-msk;\n    #endif\n\n    outColor= cgl_blend(base,col,am);\n    outColor.a*=base.a;\n}\n"};const n=e.inTrigger("render"),a=CGL.TextureEffect.AddBlendSelect(e),r=e.inValueSlider("Amount",1),o=e.inTexture("Mask"),i=e.inValueBool("Mask Invert"),l=e.inValueSlider("r",Math.random()),s=e.inValueSlider("g",Math.random()),c=e.inValueSlider("b",Math.random()),f=e.outTrigger("trigger");l.setUiAttribs({colorPick:true});e.setPortGroup("Color",[l,s,c]);const u=0;const d=e.patch.cgl;const g=new CGL.Shader(d,"textureeffect color");const m=t.color_frag||"";g.setSource(g.getDefaultVertexShader(),m);CGL.TextureEffect.setupBlending(e,g,a,r);const p=new CGL.Uniform(g,"t","tex",u),x=new CGL.Uniform(g,"t","mask",1),h=new CGL.Uniform(g,"f","r",l),v=new CGL.Uniform(g,"f","g",s),C=new CGL.Uniform(g,"f","b",c),b=new CGL.Uniform(g,"f","amount",r);o.onChange=function(){if(o.get())g.define("MASK");else g.removeDefine("MASK")};i.onChange=function(){if(i.get())g.define("INVERTMASK");else g.removeDefine("INVERTMASK")};n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(e))return;d.pushShader(g);d.currentTextureEffect.bind();d.setTexture(u,d.currentTextureEffect.getCurrentSourceTexture().tex);if(o.get())d.setTexture(1,o.get().tex);d.currentTextureEffect.finish();d.popShader();f.trigger()}};Ops.Gl.ImageCompose.Color.prototype=new CABLES.Op;CABLES.OPS["c0acfc80-16f9-4f17-978d-bad650f3ed1c"]={f:Ops.Gl.ImageCompose.Color,objName:"Ops.Gl.ImageCompose.Color"};Ops.Extension.Deprecated.Twirl=function(){CABLES.Op.apply(this,arguments);const t=this;const e=t.attachments={};let n=t.inTrigger("render");let a=t.inValue("amount");let r=t.inValue("times",1);let o=t.outTrigger("trigger");let i=t.patch.cgl;let l=new CGL.Shader(i,t.name,t);let s="".endl()+"IN vec2 texCoord;".endl()+"UNI sampler2D tex;".endl()+"UNI float amount;".endl()+"UNI float times;".endl()+"void main()".endl()+"{".endl()+"   vec2 tc = texCoord.st-0.5;".endl()+"   float angle = times*atan(tc.y,tc.x);".endl()+"   float radius = length(tc);".endl()+"   angle+= radius*amount*1.0;".endl()+"   vec2 shifted = radius*vec2(cos(angle), sin(angle));".endl()+"   vec4 col = texture2D(tex, (shifted+0.5));".endl()+"   outColor= col;".endl()+"}";l.setSource(l.getDefaultVertexShader(),s);let c=new CGL.Uniform(l,"t","tex",0);let f=new CGL.Uniform(l,"f","amount",0);let u=new CGL.Uniform(l,"f","times",r);n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(t))return;let e=i.currentTextureEffect.getCurrentSourceTexture();f.setValue(a.get()*(1/e.width));i.pushShader(l);i.currentTextureEffect.bind();i.setTexture(0,e.tex);i.currentTextureEffect.finish();i.popShader();o.trigger()}};Ops.Extension.Deprecated.Twirl.prototype=new CABLES.Op;CABLES.OPS["2c321015-1af1-49da-b5a6-1664b5ad9a35"]={f:Ops.Extension.Deprecated.Twirl,objName:"Ops.Extension.Deprecated.Twirl"};Ops.Gl.ImageCompose.Hue=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={hue_frag:"UNI float hue;\n\n#ifdef HAS_TEXTURES\n  IN vec2 texCoord;\n  UNI sampler2D tex;\n#endif\n\n#ifdef TEX_MASK\n    UNI sampler2D texMask;\n#endif\n#ifdef TEX_OFFSET\n    UNI sampler2D texOffset;\n#endif\n\nvec3 rgb2hsv(vec3 c)\n{\n    vec4 K = vec4(0.0, -1.0 / 3.0, 2.0 / 3.0, -1.0);\n    vec4 p = mix(vec4(c.bg, K.wz), vec4(c.gb, K.xy), step(c.b, c.g));\n    vec4 q = mix(vec4(p.xyw, c.r), vec4(c.r, p.yzx), step(p.x, c.r));\n\n    float d = q.x - min(q.w, q.y);\n    float e = 1.0e-10;\n    return vec3(abs(q.z + (q.w - q.y) / (6.0 * d + e)), d / (q.x + e), q.x);\n}\n\nvec3 hsv2rgb(vec3 c)\n{\n    vec4 K = vec4(1.0, 2.0 / 3.0, 1.0 / 3.0, 3.0);\n    vec3 p = abs(fract(c.xxx + K.xyz) * 6.0 - K.www);\n    return c.z * mix(K.xxx, clamp(p - K.xxx, 0.0, 1.0), c.y);\n}\n\nvoid main()\n{\n   vec4 col=vec4(1.0,0.0,0.0,1.0);\n    #ifdef HAS_TEXTURES\n        col=texture(tex,texCoord);\n        float h=hue;\n\n        #ifdef TEX_OFFSET\n            h += texture(texOffset,texCoord).r;\n        #endif\n\n\n        vec3 hsv = rgb2hsv(col.rgb);\n        hsv.x=hsv.x+h;\n\n        #ifndef TEX_MASK\n            col.rgb = hsv2rgb(hsv);\n        #endif\n\n        #ifdef TEX_MASK\n            col.rgb = mix(col.rgb,hsv2rgb(hsv),texture(texMask,texCoord).r);\n        #endif\n\n   #endif\n   outColor= col;\n}"};const n=e.inTrigger("render"),a=e.inValueSlider("hue",1),r=e.inTexture("Mask"),o=e.inTexture("Offset"),i=e.outTrigger("trigger");const l=e.patch.cgl;const s=new CGL.Shader(l,e.name,e);s.setSource(s.getDefaultVertexShader(),t.hue_frag);const c=new CGL.Uniform(s,"t","tex",0);const f=new CGL.Uniform(s,"t","texMask",1);const u=new CGL.Uniform(s,"t","texOffset",2);const d=new CGL.Uniform(s,"f","hue",1);a.onChange=function(){d.setValue(a.get())};r.onChange=o.onChange=()=>{s.toggleDefine("TEX_MASK",r.get());s.toggleDefine("TEX_OFFSET",o.get())};n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(e))return;l.pushShader(s);l.currentTextureEffect.bind();l.setTexture(0,l.currentTextureEffect.getCurrentSourceTexture().tex);if(r.get())l.setTexture(1,r.get().tex);if(o.get())l.setTexture(2,o.get().tex);l.currentTextureEffect.finish();l.popShader();i.trigger()}};Ops.Gl.ImageCompose.Hue.prototype=new CABLES.Op;CABLES.OPS["94ef0da0-c920-415c-81b0-fecbd437991d"]={f:Ops.Gl.ImageCompose.Hue,objName:"Ops.Gl.ImageCompose.Hue"};Ops.Gl.ImageCompose.ImageCompose=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={};const n=e.inTrigger("render");const a=e.inBool("use viewport size");const r=e.inValueInt("width");const o=e.inValueInt("height");const i=e.inSwitch("filter",["nearest","linear","mipmap"],"linear");const l=e.inValueSelect("wrap",["clamp to edge","repeat","mirrored repeat"]);const s=e.inValueBool("HDR");const c=e.outTrigger("trigger");const f=e.outTexture("texture_out");const u=e.inValueSlider("Background Alpha",0);const d=e.outValue("Aspect Ratio");e.setPortGroup("Texture Size",[a,r,o]);e.setPortGroup("Texture Settings",[l,i,s]);const g=e.patch.cgl;f.set(CGL.Texture.getEmptyTexture(g));let m=null;let p=null;let x=8,h=8;const v=[0,0,0,0];let C=true;const b="".endl()+"uniform float a;".endl()+"void main()".endl()+"{".endl()+"   outColor= vec4(0.0,0.0,0.0,a);".endl()+"}";const T=new CGL.Shader(g,"imgcompose bg");T.setSource(T.getDefaultVertexShader(),b);const A=new CGL.Uniform(T,"f","a",u);let E=CGL.Texture.FILTER_LINEAR;let _=CGL.Texture.WRAP_CLAMP_TO_EDGE;function O(){if(m)m.delete();if(p)p.delete();m=new CGL.TextureEffect(g,{isFloatingPointTexture:s.get()});p=new CGL.Texture(g,{name:"image compose",isFloatingPointTexture:s.get(),filter:E,wrap:_,width:Math.ceil(r.get()),height:Math.ceil(o.get())});m.setSourceTexture(p);f.set(CGL.Texture.getEmptyTexture(g));C=false}s.onChange=function(){C=true};function S(){if(!m)O();if(a.get()){x=g.getViewPort()[2];h=g.getViewPort()[3]}else{x=Math.ceil(r.get());h=Math.ceil(o.get())}if((x!=p.width||h!=p.height)&&(x!==0&&h!==0)){o.set(h);r.set(x);p.setSize(x,h);d.set(x/h);m.setSourceTexture(p);f.set(CGL.Texture.getEmptyTexture(g));f.set(p)}if(f.get()&&E!=CGL.Texture.FILTER_NEAREST){if(!f.get().isPowerOfTwo())e.setUiError("hintnpot","texture dimensions not power of two! - texture filtering when scaling will not work on ios devices.",0);else e.setUiError("hintnpot",null,0)}else e.setUiError("hintnpot",null,0)}function I(){if(a.get()){r.setUiAttribs({greyout:true});o.setUiAttribs({greyout:true})}else{r.setUiAttribs({greyout:false});o.setUiAttribs({greyout:false})}}a.onChange=function(){I();if(a.get()){r.onChange=null;o.onChange=null}else{r.onChange=S;o.onChange=S}S()};e.preRender=function(){L();T.bind()};var L=function(){if(!m||C){O()}const e=g.getViewPort();v[0]=e[0];v[1]=e[1];v[2]=e[2];v[3]=e[3];g.gl.blendFunc(g.gl.SRC_ALPHA,g.gl.ONE_MINUS_SRC_ALPHA);S();g.currentTextureEffect=m;m.setSourceTexture(p);m.startEffect();g.pushShader(T);g.currentTextureEffect.bind();g.setTexture(0,g.currentTextureEffect.getCurrentSourceTexture().tex);g.currentTextureEffect.finish();g.popShader();c.trigger();f.set(m.getCurrentSourceTexture());m.endEffect();g.setViewPort(v[0],v[1],v[2],v[3]);g.gl.blendFunc(g.gl.SRC_ALPHA,g.gl.ONE_MINUS_SRC_ALPHA);g.currentTextureEffect=null};function G(){if(l.get()=="repeat")_=CGL.Texture.WRAP_REPEAT;if(l.get()=="mirrored repeat")_=CGL.Texture.WRAP_MIRRORED_REPEAT;if(l.get()=="clamp to edge")_=CGL.Texture.WRAP_CLAMP_TO_EDGE;C=true;S()}l.set("repeat");l.onChange=G;function P(){if(i.get()=="nearest")E=CGL.Texture.FILTER_NEAREST;if(i.get()=="linear")E=CGL.Texture.FILTER_LINEAR;if(i.get()=="mipmap")E=CGL.Texture.FILTER_MIPMAP;C=true;S()}i.set("linear");i.onChange=P;a.set(true);n.onTriggered=L;e.preRender=L;r.set(640);o.set(360);P();G();I()};Ops.Gl.ImageCompose.ImageCompose.prototype=new CABLES.Op;CABLES.OPS["5c04608d-1e42-4e36-be00-1be4a81fc309"]={f:Ops.Gl.ImageCompose.ImageCompose,objName:"Ops.Gl.ImageCompose.ImageCompose"};Ops.Gl.ImageCompose.DrawImage_v3=function(){CABLES.Op.apply(this,arguments);const a=this;const e=a.attachments={drawimage_frag:"#ifdef HAS_TEXTURES\n    IN vec2 texCoord;\n    UNI sampler2D tex;\n    UNI sampler2D image;\n#endif\n\n#ifdef TEX_TRANSFORM\n    IN mat3 transform;\n#endif\n// UNI float rotate;\n\n{{CGL.BLENDMODES}}\n\n#ifdef HAS_TEXTUREALPHA\n   UNI sampler2D imageAlpha;\n#endif\n\nUNI float amount;\n\n#ifdef ASPECT_RATIO\n    UNI float aspectTex;\n    UNI float aspectPos;\n#endif\n\nvoid main()\n{\n    vec4 blendRGBA=vec4(0.0,0.0,0.0,1.0);\n\n    #ifdef HAS_TEXTURES\n        vec2 tc=texCoord;\n\n        #ifdef TEX_FLIP_X\n            tc.x=1.0-tc.x;\n        #endif\n        #ifdef TEX_FLIP_Y\n            tc.y=1.0-tc.y;\n        #endif\n\n        #ifdef ASPECT_RATIO\n            #ifdef ASPECT_AXIS_X\n                tc.y=(1.0-aspectPos)-(((1.0-aspectPos)-tc.y)*aspectTex);\n            #endif\n            #ifdef ASPECT_AXIS_Y\n                tc.x=(1.0-aspectPos)-(((1.0-aspectPos)-tc.x)/aspectTex);\n            #endif\n        #endif\n\n        #ifdef TEX_TRANSFORM\n            vec3 coordinates=vec3(tc.x, tc.y,1.0);\n            tc=(transform * coordinates ).xy;\n        #endif\n\n        blendRGBA=texture(image,tc);\n\n        vec3 blend=blendRGBA.rgb;\n        vec4 baseRGBA=texture(tex,texCoord);\n        vec3 base=baseRGBA.rgb;\n\n\n        #ifdef PREMUL\n            blend.rgb = (blend.rgb) + (base.rgb * (1.0 - blendRGBA.a));\n        #endif\n\n        vec3 colNew=_blend(base,blend);\n\n\n\n\n        #ifdef REMOVE_ALPHA_SRC\n            blendRGBA.a=1.0;\n        #endif\n\n        #ifdef HAS_TEXTUREALPHA\n            vec4 colImgAlpha=texture(imageAlpha,tc);\n            float colImgAlphaAlpha=colImgAlpha.a;\n\n            #ifdef ALPHA_FROM_LUMINANCE\n                vec3 gray = vec3(dot(vec3(0.2126,0.7152,0.0722), colImgAlpha.rgb ));\n                colImgAlphaAlpha=(gray.r+gray.g+gray.b)/3.0;\n            #endif\n\n            #ifdef ALPHA_FROM_INV_UMINANCE\n                vec3 gray = vec3(dot(vec3(0.2126,0.7152,0.0722), colImgAlpha.rgb ));\n                colImgAlphaAlpha=1.0-(gray.r+gray.g+gray.b)/3.0;\n            #endif\n\n            #ifdef INVERT_ALPHA\n                colImgAlphaAlpha=clamp(colImgAlphaAlpha,0.0,1.0);\n                colImgAlphaAlpha=1.0-colImgAlphaAlpha;\n            #endif\n\n            blendRGBA.a=colImgAlphaAlpha*blendRGBA.a;\n        #endif\n    #endif\n\n    float am=amount;\n\n    #ifdef CLIP_REPEAT\n        if(tc.y>1.0 || tc.y<0.0 || tc.x>1.0 || tc.x<0.0)\n        {\n            // colNew.rgb=vec3(0.0);\n            am=0.0;\n        }\n    #endif\n\n    #ifdef ASPECT_RATIO\n        #ifdef ASPECT_CROP\n            if(tc.y>1.0 || tc.y<0.0 || tc.x>1.0 || tc.x<0.0)\n            {\n                colNew.rgb=base.rgb;\n                am=0.0;\n            }\n\n        #endif\n    #endif\n\n\n\n    #ifndef PREMUL\n        blendRGBA.rgb=mix(colNew,base,1.0-(am*blendRGBA.a));\n        blendRGBA.a=clamp(baseRGBA.a+(blendRGBA.a*am),0.,1.);\n    #endif\n\n    #ifdef PREMUL\n        // premultiply\n        // blendRGBA.rgb = (blendRGBA.rgb) + (baseRGBA.rgb * (1.0 - blendRGBA.a));\n        blendRGBA=vec4(\n            mix(colNew.rgb,base,1.0-(am*blendRGBA.a)),\n            blendRGBA.a*am+baseRGBA.a\n            );\n    #endif\n\n    #ifdef ALPHA_MASK\n    blendRGBA.a=baseRGBA.a;\n    #endif\n\n    outColor=blendRGBA;\n}\n\n\n\n\n\n\n\n",drawimage_vert:"IN vec3 vPosition;\nIN vec2 attrTexCoord;\nIN vec3 attrVertNormal;\n\nUNI mat4 projMatrix;\nUNI mat4 mvMatrix;\n\nOUT vec2 texCoord;\n// OUT vec3 norm;\n\n#ifdef TEX_TRANSFORM\n    UNI float posX;\n    UNI float posY;\n    UNI float scaleX;\n    UNI float scaleY;\n    UNI float rotate;\n    OUT mat3 transform;\n#endif\n\nvoid main()\n{\n   texCoord=attrTexCoord;\n//   norm=attrVertNormal;\n\n   #ifdef TEX_TRANSFORM\n        vec3 coordinates=vec3(attrTexCoord.x, attrTexCoord.y,1.0);\n        float angle = radians( rotate );\n        vec2 scale= vec2(scaleX,scaleY);\n        vec2 translate= vec2(posX,posY);\n\n        transform = mat3(   scale.x * cos( angle ), scale.x * sin( angle ), 0.0,\n            - scale.y * sin( angle ), scale.y * cos( angle ), 0.0,\n            - 0.5 * scale.x * cos( angle ) + 0.5 * scale.y * sin( angle ) - 0.5 * translate.x*2.0 + 0.5,  - 0.5 * scale.x * sin( angle ) - 0.5 * scale.y * cos( angle ) - 0.5 * translate.y*2.0 + 0.5, 1.0);\n   #endif\n\n   gl_Position = projMatrix * mvMatrix * vec4(vPosition,  1.0);\n}\n"};const t=a.inTrigger("render"),n=CGL.TextureEffect.AddBlendSelect(a,"blendMode"),r=a.inValueSlider("amount",1),o=a.inTexture("Image"),i=a.inValueBool("Premultiplied",false),l=a.inValueBool("Alpha Mask",false),s=a.inValueBool("removeAlphaSrc",false),c=a.inTexture("Mask"),f=a.inValueSelect("Mask Src",["alpha channel","luminance","luminance inv"],"luminance"),u=a.inValueBool("Invert alpha channel"),d=a.inValueBool("Aspect Ratio",false),g=a.inValueSelect("Stretch Axis",["X","Y"],"X"),m=a.inValueSlider("Position",0),p=a.inValueBool("Crop",false),x=a.outTrigger("trigger");n.set("normal");const h=a.patch.cgl;const v=new CGL.Shader(h,"drawimage");c.onLinkChanged=C;a.setPortGroup("Mask",[c,f,u]);a.setPortGroup("Aspect Ratio",[d,m,p,g]);function C(){if(c.isLinked()){s.setUiAttribs({greyout:true});f.setUiAttribs({greyout:false});u.setUiAttribs({greyout:false})}else{s.setUiAttribs({greyout:false});f.setUiAttribs({greyout:true});u.setUiAttribs({greyout:true})}}a.toWorkPortsNeedToBeLinked(o);v.setSource(e.drawimage_vert,e.drawimage_frag);const b=new CGL.Uniform(v,"t","tex",0),U=new CGL.Uniform(v,"t","image",1),w=new CGL.Uniform(v,"t","imageAlpha",2),T=new CGL.Uniform(v,"f","aspectTex",1),B=new CGL.Uniform(v,"f","aspectPos",m);d.onChange=p.onChange=g.onChange=A;function A(){v.removeDefine("ASPECT_AXIS_X");v.removeDefine("ASPECT_AXIS_Y");v.removeDefine("ASPECT_CROP");m.setUiAttribs({greyout:!d.get()});p.setUiAttribs({greyout:!d.get()});g.setUiAttribs({greyout:!d.get()});if(d.get()){v.define("ASPECT_RATIO");if(p.get())v.define("ASPECT_CROP");if(g.get()=="X")v.define("ASPECT_AXIS_X");if(g.get()=="Y")v.define("ASPECT_AXIS_Y")}else{v.removeDefine("ASPECT_RATIO");if(p.get())v.define("ASPECT_CROP");if(g.get()=="X")v.define("ASPECT_AXIS_X");if(g.get()=="Y")v.define("ASPECT_AXIS_Y")}}const E=a.inValueBool("flip x");const _=a.inValueBool("flip y");let O=a.inValueBool("Transform");let S=a.inValueSlider("Scale X",1);let I=a.inValueSlider("Scale Y",1);let L=a.inValue("Position X",0);let G=a.inValue("Position Y",0);let P=a.inValue("Rotation",0);const R=a.inValueBool("Clip Repeat",false);const D=new CGL.Uniform(v,"f","scaleX",S);const F=new CGL.Uniform(v,"f","scaleY",I);const V=new CGL.Uniform(v,"f","posX",L);const z=new CGL.Uniform(v,"f","posY",G);const X=new CGL.Uniform(v,"f","rotate",P);O.onChange=M;function M(){v.toggleDefine("TEX_TRANSFORM",O.get());S.setUiAttribs({greyout:!O.get()});I.setUiAttribs({greyout:!O.get()});L.setUiAttribs({greyout:!O.get()});G.setUiAttribs({greyout:!O.get()});P.setUiAttribs({greyout:!O.get()})}CGL.TextureEffect.setupBlending(a,v,n,r);const k=new CGL.Uniform(v,"f","amount",r);t.onTriggered=N;R.onChange=c.onChange=i.onChange=l.onChange=u.onChange=_.onChange=E.onChange=s.onChange=f.onChange=y;M();C();A();y();function y(){v.toggleDefine("REMOVE_ALPHA_SRC",s.get());v.toggleDefine("ALPHA_MASK",l.get());v.toggleDefine("CLIP_REPEAT",R.get());v.toggleDefine("HAS_TEXTUREALPHA",c.get()&&c.get().tex);v.toggleDefine("TEX_FLIP_X",E.get());v.toggleDefine("TEX_FLIP_Y",_.get());v.toggleDefine("INVERT_ALPHA",u.get());v.toggleDefine("ALPHA_FROM_LUMINANCE",f.get()=="luminance");v.toggleDefine("ALPHA_FROM_INV_UMINANCE",f.get()=="luminance_inv");v.toggleDefine("PREMUL",i.get())}function N(){if(!CGL.TextureEffect.checkOpInEffect(a))return;const e=o.get();if(e&&e.tex&&r.get()>0){h.pushShader(v);h.currentTextureEffect.bind();const t=h.currentTextureEffect.getCurrentSourceTexture();h.setTexture(0,t.tex);const n=1/(h.currentTextureEffect.getWidth()/h.currentTextureEffect.getHeight())*(e.width/e.height);T.setValue(n);h.setTexture(1,e.tex);if(c.get()&&c.get().tex){h.setTexture(2,c.get().tex)}h.pushBlendMode(CGL.BLEND_NONE,true);h.currentTextureEffect.finish();h.popBlendMode();h.popShader()}x.trigger()}};Ops.Gl.ImageCompose.DrawImage_v3.prototype=new CABLES.Op;CABLES.OPS["8f6b2f15-fcb0-4597-90c0-e5173f2969fe"]={f:Ops.Gl.ImageCompose.DrawImage_v3,objName:"Ops.Gl.ImageCompose.DrawImage_v3"};Ops.Trigger.Sequence=function(){CABLES.Op.apply(this,arguments);const o=this;const e=o.attachments={};const t=o.inTrigger("exe"),n=o.inTriggerButton("Clean up connections");o.setUiAttrib({resizable:true,resizableY:false,stretchPorts:true});const a=[],i=[],r=16;let l=null,s=[];t.onTriggered=u;n.onTriggered=d;n.setUiAttribs({hideParam:true,hidePort:true});for(let t=0;t<r;t++){const g=o.outTrigger("trigger "+t);i.push(g);g.onLinkChanged=f;if(t<r-1){let e=o.inTrigger("exe "+t);e.onTriggered=u;a.push(e)}}c();function c(){s.length=0;for(let e=0;e<i.length;e++)if(i[e].links.length>0)s.push(i[e])}function f(){c();clearTimeout(l);l=setTimeout(()=>{let t=false;for(let e=0;e<i.length;e++)if(i[e].links.length>1)t=true;n.setUiAttribs({hideParam:!t});if(o.isCurrentUiOp())o.refreshParams()},60)}function u(){for(let e=0;e<s.length;e++)s[e].trigger()}function d(){let a=0;for(let n=0;n<i.length;n++){let t=[];if(i[n].links.length>1)for(let e=1;e<i[n].links.length;e++){while(i[a].links.length>0)a++;t.push(i[n].links[e]);const r=i[n].links[e].getOtherPort(i[n]);o.patch.link(o,"trigger "+a,r.op,r.name);a++}for(let e=0;e<t.length;e++)t[e].remove()}f();c()}};Ops.Trigger.Sequence.prototype=new CABLES.Op;CABLES.OPS["a466bc1f-06e9-4595-8849-bffb9fe22f99"]={f:Ops.Trigger.Sequence,objName:"Ops.Trigger.Sequence"};Ops.Gl.MainLoop=function(){CABLES.Op.apply(this,arguments);const a=this;const e=a.attachments={};const t=a.inValue("FPS Limit",0),n=a.outTrigger("trigger"),r=a.outNumber("width"),o=a.outNumber("height"),i=a.inValueBool("Reduce FPS not focussed",false),l=a.inValueBool("Reduce FPS loading"),s=a.inValueBool("Clear",true),c=a.inValueBool("ClearAlpha",true),f=a.inValueBool("Fullscreen Button",false),u=a.inValueBool("Active",true),d=a.inValueBool("Hires Displays",false),g=a.inSwitch("Pixel Unit",["Display","CSS"],"Display");a.onAnimFrame=S;d.onChange=function(){if(d.get())a.patch.cgl.pixelDensity=window.devicePixelRatio;else a.patch.cgl.pixelDensity=1;a.patch.cgl.updateSize();if(CABLES.UI)gui.setLayout()};u.onChange=function(){a.patch.removeOnAnimFrame(a);if(u.get()){a.setUiAttrib({extendTitle:""});a.onAnimFrame=S;a.patch.addOnAnimFrame(a);a.log("adding again!")}else{a.setUiAttrib({extendTitle:"Inactive"})}};const m=a.patch.cgl;let p=0;let x=0;let h=null;let v=false;if(!a.patch.cgl)a.uiAttr({error:"No webgl cgl context"});const C=vec3.create();vec3.set(C,0,0,0);const b=vec3.create();vec3.set(b,0,0,-2);f.onChange=O;setTimeout(O,100);let T=null;let A=true;let E=true;window.addEventListener("blur",()=>{A=false});window.addEventListener("focus",()=>{A=true});document.addEventListener("visibilitychange",()=>{E=!document.hidden});I();a.patch.tempData.mainloopOp=this;g.onChange=()=>{r.set(0);o.set(0)};function _(){if(l.get()&&a.patch.loading.getProgress()<1)return 5;if(i.get()){if(!E)return 10;if(!A)return 30}return t.get()}function O(){function e(){if(T)T.style.display="block"}function t(){if(T)T.style.display="none"}a.patch.cgl.canvas.addEventListener("mouseleave",t);a.patch.cgl.canvas.addEventListener("mouseenter",e);if(f.get()){if(!T){T=document.createElement("div");const n=a.patch.cgl.canvas.parentElement;if(n)n.appendChild(T);T.addEventListener("mouseenter",e);T.addEventListener("click",function(e){if(CABLES.UI&&!e.shiftKey)gui.cycleFullscreen();else m.fullScreen()})}T.style.padding="10px";T.style.position="absolute";T.style.right="5px";T.style.top="5px";T.style.width="20px";T.style.height="20px";T.style.cursor="pointer";T.style["border-radius"]="40px";T.style.background="#444";T.style["z-index"]="9999";T.style.display="none";T.innerHTML='<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" version="1.1" id="Capa_1" x="0px" y="0px" viewBox="0 0 490 490" style="width:20px;height:20px;" xml:space="preserve" width="512px" height="512px"><g><path d="M173.792,301.792L21.333,454.251v-80.917c0-5.891-4.776-10.667-10.667-10.667C4.776,362.667,0,367.442,0,373.333V480     c0,5.891,4.776,10.667,10.667,10.667h106.667c5.891,0,10.667-4.776,10.667-10.667s-4.776-10.667-10.667-10.667H36.416     l152.459-152.459c4.093-4.237,3.975-10.99-0.262-15.083C184.479,297.799,177.926,297.799,173.792,301.792z" fill="#FFFFFF"/><path d="M480,0H373.333c-5.891,0-10.667,4.776-10.667,10.667c0,5.891,4.776,10.667,10.667,10.667h80.917L301.792,173.792     c-4.237,4.093-4.354,10.845-0.262,15.083c4.093,4.237,10.845,4.354,15.083,0.262c0.089-0.086,0.176-0.173,0.262-0.262     L469.333,36.416v80.917c0,5.891,4.776,10.667,10.667,10.667s10.667-4.776,10.667-10.667V10.667C490.667,4.776,485.891,0,480,0z" fill="#FFFFFF"/><path d="M36.416,21.333h80.917c5.891,0,10.667-4.776,10.667-10.667C128,4.776,123.224,0,117.333,0H10.667     C4.776,0,0,4.776,0,10.667v106.667C0,123.224,4.776,128,10.667,128c5.891,0,10.667-4.776,10.667-10.667V36.416l152.459,152.459     c4.237,4.093,10.99,3.975,15.083-0.262c3.992-4.134,3.992-10.687,0-14.82L36.416,21.333z" fill="#FFFFFF"/><path d="M480,362.667c-5.891,0-10.667,4.776-10.667,10.667v80.917L316.875,301.792c-4.237-4.093-10.99-3.976-15.083,0.261     c-3.993,4.134-3.993,10.688,0,14.821l152.459,152.459h-80.917c-5.891,0-10.667,4.776-10.667,10.667s4.776,10.667,10.667,10.667     H480c5.891,0,10.667-4.776,10.667-10.667V373.333C490.667,367.442,485.891,362.667,480,362.667z" fill="#FFFFFF"/></g></svg>'}else{if(T){T.style.display="none";T.remove();T=null}}}a.onDelete=function(){m.gl.clearColor(0,0,0,0);m.gl.clear(m.gl.COLOR_BUFFER_BIT|m.gl.DEPTH_BUFFER_BIT)};function S(e){if(!u.get())return;if(m.aborted||m.canvas.clientWidth===0||m.canvas.clientHeight===0)return;a.patch.cg=m;if(d.get())a.patch.cgl.pixelDensity=window.devicePixelRatio;const t=performance.now();a.patch.config.fpsLimit=_();if(m.canvasWidth==-1){m.setCanvas(a.patch.config.glCanvasId);return}if(m.canvasWidth!=r.get()||m.canvasHeight!=o.get()){let e=1;if(g.get()=="CSS")e=a.patch.cgl.pixelDensity;r.set(m.canvasWidth/e);o.set(m.canvasHeight/e)}if(CABLES.now()-x>1e3){CGL.fpsReport=CGL.fpsReport||[];if(a.patch.loading.getProgress()>=1&&x!==0)CGL.fpsReport.push(p);p=0;x=CABLES.now()}CGL.MESH.lastShader=null;CGL.MESH.lastMesh=null;m.renderStart(m,C,b);if(s.get()){m.gl.clearColor(0,0,0,1);m.gl.clear(m.gl.COLOR_BUFFER_BIT|m.gl.DEPTH_BUFFER_BIT)}n.trigger();if(CGL.MESH.lastMesh)CGL.MESH.lastMesh.unBind();if(CGL.Texture.previewTexture){if(!CGL.Texture.texturePreviewer)CGL.Texture.texturePreviewer=new CGL.Texture.texturePreview(m);CGL.Texture.texturePreviewer.render(CGL.Texture.previewTexture)}m.renderEnd(m);a.patch.cg=null;if(c.get()){m.gl.clearColor(1,1,1,1);m.gl.colorMask(false,false,false,true);m.gl.clear(m.gl.COLOR_BUFFER_BIT);m.gl.colorMask(true,true,true,true)}if(!m.tempData.phong)m.tempData.phong={};p++;a.patch.cgl.profileData.profileMainloopMs=performance.now()-t}function I(){clearTimeout(h);h=setTimeout(()=>{if(a.patch.getOpsByObjName(a.name).length>1){a.setUiError("multimainloop","there should only be one mainloop op!");if(!v)v=a.patch.addEventListener("onOpDelete",I)}else a.setUiError("multimainloop",null,1)},500)}};Ops.Gl.MainLoop.prototype=new CABLES.Op;CABLES.OPS["b0472a1d-db16-4ba6-8787-f300fbdc77bb"]={f:Ops.Gl.MainLoop,objName:"Ops.Gl.MainLoop"};Ops.Gl.ImageCompose.FastBlur=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={blur_frag:"\nUNI sampler2D tex;\n#ifdef USE_MASK\n    UNI sampler2D texMask;\n#endif\nUNI float amount;\nUNI float pass;\n\nIN vec2 texCoord;\n\nUNI float dirX;\nUNI float dirY;\nUNI float width;\nUNI float height;\n\nIN vec2 coord0;\nIN vec2 coord1;\nIN vec2 coord2;\nIN vec2 coord3;\nIN vec2 coord4;\nIN vec2 coord5;\nIN vec2 coord6;\n\n#ifdef HAS_MASK\n    UNI sampler2D imageMask;\n#endif\n\nvoid main()\n{\n    vec4 color = vec4(0.0);\n\n    #ifdef USE_MASK\n        #ifdef MASK_INVERT\n            if(texture(texMask,texCoord).r<0.5)\n            {\n                outColor= texture(tex, texCoord);\n                return;\n            }\n        #endif\n\n        #ifndef MASK_INVERT\n            if(texture(texMask,texCoord).r>0.5)\n            {\n                outColor= texture(tex, texCoord);\n                return;\n            }\n        #endif\n    #endif\n\n    color += texture(tex, coord0) * 0.06927096443792478;\n    color += texture(tex, coord1) * 0.1383328848652136;\n    color += texture(tex, coord2) * 0.21920904690397863;\n    color += texture(tex, coord3) * 0.14637421;\n    color += texture(tex, coord4) * 0.21920904690397863;\n    color += texture(tex, coord5) * 0.1383328848652136;\n    color += texture(tex, coord6) * 0.06927096443795711;\n\n    color.a=1.0;\n    outColor= color;\n}",blur_vert:"\nIN vec3 vPosition;\nIN vec2 attrTexCoord;\nIN vec3 attrVertNormal;\nOUT vec2 texCoord;\nOUT vec3 norm;\nUNI mat4 projMatrix;\nUNI mat4 mvMatrix;\nUNI mat4 modelMatrix;\n\nUNI float pass;\nUNI float dirX;\nUNI float dirY;\nUNI float width;\nUNI float height;\n\nOUT vec2 coord0;\nOUT vec2 coord1;\nOUT vec2 coord2;\nOUT vec2 coord3;\nOUT vec2 coord4;\nOUT vec2 coord5;\nOUT vec2 coord6;\n\n// http://dev.theomader.com/gaussian-kernel-calculator/\n// http://rastergrid.com/blog/2010/09/efficient-gaussian-blur-with-linear-sampling/\n\n\nvoid main()\n{\n    texCoord=attrTexCoord;\n    norm=attrVertNormal;\n    vec4 pos=vec4(vPosition,  1.0);\n    {{MODULE_VERTEX_POSITION}}\n\n    vec2 dir=vec2(dirX,dirY);\n    vec2 res=vec2( (1.) / width , (1.) / height )*dir;\n\n    coord3= attrTexCoord;\n\n    coord0= attrTexCoord + (-3.0368997744118595 * res);\n    coord1= attrTexCoord + (-2.089778445362373 * res);\n    coord2= attrTexCoord + (-1.2004366090034069 * res);\n    coord4= attrTexCoord + (1.2004366090034069 * res);\n    coord5= attrTexCoord + (2.089778445362373* res);\n    coord6= attrTexCoord + (3.0368997744118595 * res);\n\n    #ifdef CLAMP\n        coord0=clamp(coord0,0.0,1.0);\n        coord1=clamp(coord1,0.0,1.0);\n        coord2=clamp(coord2,0.0,1.0);\n        coord3=clamp(coord3,0.0,1.0);\n        coord4=clamp(coord4,0.0,1.0);\n        coord5=clamp(coord5,0.0,1.0);\n        coord6=clamp(coord6,0.0,1.0);\n    #endif\n\n    gl_Position = projMatrix * mvMatrix * pos;\n}\n"};const n=e.inTrigger("render"),a=e.outTrigger("trigger"),r=e.inFloat("amount",3),o=e.inBool("Clamp",false),i=e.inBool("Mask Invert",false),l=e.inTexture("Mask");const s=e.patch.cgl;const c=new CGL.Shader(s,"fastblur");c.setSource(t.blur_vert,t.blur_frag);const f=new CGL.Uniform(c,"t","tex",0),u=new CGL.Uniform(c,"f","dirX",0),d=new CGL.Uniform(c,"f","dirY",0),g=new CGL.Uniform(c,"f","width",0),m=new CGL.Uniform(c,"f","height",0),p=new CGL.Uniform(c,"f","pass",0),x=new CGL.Uniform(c,"f","amount",r.get()),h=new CGL.Uniform(c,"t","texMask",1);r.onChange=()=>{x.setValue(r.get())};const v=e.inDropDown("direction",["both","vertical","horizontal"]);let C=0;v.set("both");v.onChange=()=>{if(v.get()=="both")C=0;if(v.get()=="horizontal")C=1;if(v.get()=="vertical")C=2};o.onChange=()=>{c.toggleDefine("CLAMP",o.get())};i.onChange=l.onChange=()=>{c.toggleDefine("USE_MASK",l.isLinked());c.toggleDefine("MASK_INVERT",i.get())};n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(e))return;g.setValue(s.currentTextureEffect.getCurrentSourceTexture().width);m.setValue(s.currentTextureEffect.getCurrentSourceTexture().height);const t=r.get();if(l.get())s.setTexture(1,l.get().tex);for(let e=0;e<t;e++){s.pushShader(c);p.setValue(e/t);if(C===0||C==2){s.currentTextureEffect.bind();s.setTexture(0,s.currentTextureEffect.getCurrentSourceTexture().tex);u.setValue(0);d.setValue(1+e*e);s.currentTextureEffect.finish()}if(C===0||C==1){s.currentTextureEffect.bind();s.setTexture(0,s.currentTextureEffect.getCurrentSourceTexture().tex);u.setValue(1+e*e);d.setValue(0);s.currentTextureEffect.finish()}s.popShader()}a.trigger()}};Ops.Gl.ImageCompose.FastBlur.prototype=new CABLES.Op;CABLES.OPS["720ca148-dcf7-433b-bb1f-edbfb7433c6c"]={f:Ops.Gl.ImageCompose.FastBlur,objName:"Ops.Gl.ImageCompose.FastBlur"};Ops.Devices.Mouse.Mouse_v2=function(){CABLES.Op.apply(this,arguments);const e=this;const w=e.attachments={};const t=e.inValueBool("Active",true),n=e.inValueBool("relative"),r=e.inValueBool("normalize"),a=e.inValueBool("flip y",true),o=e.inValueSelect("Area",["Canvas","Document","Parent Element"],"Canvas"),i=e.inBool("right click prevent default",true),l=e.inValueBool("Touch support",true),s=e.inValueBool("smooth"),c=e.inValueFloat("smoothSpeed",20),f=e.inValueFloat("multiply",1),u=e.outNumber("x",0),d=e.outNumber("y",0),g=e.outBoolNum("button down"),B=e.outTrigger("click"),D=e.outTrigger("Button Up"),F=e.outTrigger("click right"),m=e.outBoolNum("mouseOver"),p=e.outNumber("button");e.setPortGroup("Behavior",[n,r,a,o,i,l]);e.setPortGroup("Smoothing",[s,c,f]);let x=0;const h=e.patch.cgl;let v=null;function C(n,a){if(r.get()){let e=h.canvas.width/h.pixelDensity;let t=h.canvas.height/h.pixelDensity;if(v==document.body){e=v.clientWidth/h.pixelDensity;t=v.clientHeight/h.pixelDensity}u.set(((n||0)/e*2-1)*f.get());d.set(((a||0)/t*2-1)*f.get())}else{u.set((n||0)*f.get());d.set((a||0)*f.get())}}s.onChange=function(){if(s.get())x=setInterval(X,5);else if(x)clearTimeout(x)};let V,z;let b=0,T=0;r.onChange=function(){A=0;E=0;C(A,E)};let A=h.canvas.width/2;let E=h.canvas.height/2;b=A;T=E;u.set(A);d.set(E);let _=0;let O=0;let S=0;let I=0;U();o.onChange=U;let L=0;function X(){L=c.get();if(L<=0)L=.01;const e=Math.abs(A-b);const t=Math.round(e/L,0);b=b<A?b+t:b-t;const n=Math.abs(E-T);const a=Math.round(n/L,0);T=T<E?T+a:T-a;C(b,T)}function G(e){g.set(false);m.set(true);L=c.get()}function P(e){p.set(e.which);g.set(true)}function R(e){p.set(0);g.set(false);D.trigger()}function M(e){F.trigger();if(i.get())e.preventDefault()}function y(e){B.trigger()}function k(e){_=0;O=0;L=100;m.set(false);g.set(false)}n.onChange=function(){S=0;I=0};function j(e){if(!n.get()){if(o.get()!="Document"){S=e.offsetX;I=e.offsetY}else{S=e.clientX;I=e.clientY}if(s.get()){A=S;if(a.get())E=v.clientHeight-I;else E=I}else{if(a.get())C(S,v.clientHeight-I);else C(S,I)}}else{if(_!=0&&O!=0){S=e.offsetX-_;I=e.offsetY-O}else{}_=e.offsetX;O=e.offsetY;A+=S;E+=I;if(E>460)E=460}}function H(e){m.set(true);j(e)}function Y(e){if(event.touches&&event.touches.length>0)j(e.touches[0])}function W(e){g.set(true);if(e.touches&&e.touches.length>0)P(e.touches[0])}function q(e){g.set(false);R()}l.onChange=function(){N();U()};function N(){if(!v)return;v.removeEventListener("touchend",q);v.removeEventListener("touchstart",W);v.removeEventListener("touchmove",Y);v.removeEventListener("click",y);v.removeEventListener("mousemove",H);v.removeEventListener("mouseleave",k);v.removeEventListener("mousedown",P);v.removeEventListener("mouseup",R);v.removeEventListener("mouseenter",G);v.removeEventListener("contextmenu",M);v=null}function U(){if(v||!t.get())N();if(!t.get())return;v=h.canvas;if(o.get()=="Document")v=document.body;if(o.get()=="Parent Element")v=h.canvas.parentElement;if(l.get()){v.addEventListener("touchend",q);v.addEventListener("touchstart",W);v.addEventListener("touchmove",Y)}v.addEventListener("mousemove",H);v.addEventListener("mouseleave",k);v.addEventListener("mousedown",P);v.addEventListener("mouseup",R);v.addEventListener("mouseenter",G);v.addEventListener("contextmenu",M);v.addEventListener("click",y)}t.onChange=function(){if(v)N();if(t.get())U()};e.onDelete=function(){N()};U()};Ops.Devices.Mouse.Mouse_v2.prototype=new CABLES.Op;CABLES.OPS["9fa3fc46-3147-4e3a-8ee8-a93ea9e8786e"]={f:Ops.Devices.Mouse.Mouse_v2,objName:"Ops.Devices.Mouse.Mouse_v2"};Ops.Gl.Matrix.ScreenPosTo3d_v3=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={};const n=e.inTrigger("Exec"),r=e.inValue("X"),o=e.inValue("Y"),a=e.inSwitch("Input Type",["Pixel","-1 to 1"],"Pixel"),i=e.outTrigger("Trigger out"),l=e.outNumber("Result X"),s=e.outNumber("Result Y");const c=mat4.create();const f=e.patch.cgl;n.onTriggered=d;let u=0;a.onChange=()=>{if(a.get()=="Pixel")u=0;else if(a.get()=="-1 to 1")u=1};function d(){let e=0;let t=0;let n=f.canvas.clientWidth/f.canvas.clientHeight;if(u===0){e=2*r.get()/f.canvas.clientWidth-1;t=-2*o.get()/f.canvas.clientHeight+1}else if(u===1){e=r.get();t=o.get()}let a=vec3.fromValues(e,t,0);mat4.mul(c,f.pMatrix,f.vMatrix);mat4.invert(c,c);vec3.transformMat4(a,a,c);l.set(a[0]*10);s.set(a[1]*10);i.trigger()}};Ops.Gl.Matrix.ScreenPosTo3d_v3.prototype=new CABLES.Op;CABLES.OPS["48d72532-afa6-40c9-a895-00a43635a94b"]={f:Ops.Gl.Matrix.ScreenPosTo3d_v3,objName:"Ops.Gl.Matrix.ScreenPosTo3d_v3"};Ops.Gl.ImageCompose.PixelDisplacement_v3=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={pixeldisplace3_frag:"IN vec2 texCoord;\nUNI sampler2D tex;\nUNI sampler2D displaceTex;\nUNI float amountX;\nUNI float amountY;\nUNI float amount;\n\n{{CGL.BLENDMODES}}\n\nvec3 getOffset(vec3 offset)\n{\n    #ifdef ZERO_BLACK\n        return offset;\n    #endif\n\n    #ifdef ZERO_GREY\n        return offset*2.0-1.0;\n    #endif\n}\n\nfloat getOffset(float offset)\n{\n    #ifdef ZERO_BLACK\n        return offset;\n    #endif\n\n    #ifdef ZERO_GREY\n        return offset*2.0-1.0;\n    #endif\n}\n\nvoid main()\n{\n    vec3 offset=texture(displaceTex,texCoord).rgb;\n    float x,y;\n\n    #ifdef INPUT_REDGREEN\n        offset=getOffset(offset);\n        x=offset.r*amountX+texCoord.x;\n        y=offset.g*amountY+texCoord.y;\n    #endif\n    #ifdef INPUT_RED\n        offset=getOffset(offset);\n        x=offset.r*amountX+texCoord.x;\n        y=offset.r*amountY+texCoord.y;\n    #endif\n    #ifdef INPUT_GREEN\n        offset=getOffset(offset);\n        x=offset.g*amountX+texCoord.x;\n        y=offset.g*amountY+texCoord.y;\n    #endif\n    #ifdef INPUT_BLUE\n        offset=getOffset(offset);\n        x=offset.b*amountX+texCoord.x;\n        y=offset.b*amountY+texCoord.y;\n    #endif\n    #ifdef INPUT_LUMINANCE\n        float o=dot(vec3(0.2126,0.7152,0.0722), offset);\n        o=getOffset(o);\n        x=o*amountX+texCoord.x;\n        y=o*amountY+texCoord.y;\n    #endif\n    #ifdef WRAP_CLAMP\n        x=clamp(x,0.0,1.0);\n        y=clamp(y,0.0,1.0);\n    #endif\n    #ifdef WRAP_REPEAT\n        x=mod(x,1.0);\n        y=mod(y,1.0);\n    #endif\n    #ifdef WRAP_MIRROR\n        float mx=mod(x,2.0);\n        float my=mod(y,2.0);\n        x=abs((floor(mx)-fract(mx)));\n        y=abs((floor(my)-fract(my)));\n    #endif\n\n\n\n    vec4 col=texture(tex,vec2(x,y));\n    vec4 base=texture(tex,texCoord);\n\n    outColor=cgl_blend(base,col,amount);\n}"};const n=e.inTrigger("render"),a=e.inTexture("displaceTex"),r=CGL.TextureEffect.AddBlendSelect(e,"Blend Mode","normal"),o=e.inValueSlider("Amount",1),i=e.inValueSlider("amount X",.2),l=e.inValueSlider("amount Y",.2),s=e.inSwitch("Wrap",["Mirror","Clamp","Repeat"],"Mirror"),c=e.inValueSelect("Input",["Luminance","RedGreen","Red","Green","Blue"],"Luminance"),f=e.inSwitch("Zero Displace",["Grey","Black"],"Grey"),u=e.outTrigger("trigger");e.setPortGroup("Axis Displacement Strength",[i,l]);e.setPortGroup("Modes",[s,c]);e.toWorkPortsNeedToBeLinked(a);const d=e.patch.cgl,g=new CGL.Shader(d,e.name,e);g.setSource(g.getDefaultVertexShader(),t.pixeldisplace3_frag);const m=new CGL.Uniform(g,"t","tex",0),p=new CGL.Uniform(g,"t","displaceTex",1),x=new CGL.Uniform(g,"f","amountX",i),h=new CGL.Uniform(g,"f","amountY",l),v=new CGL.Uniform(g,"f","amount",o);f.onChange=C;s.onChange=b;c.onChange=T;b();T();C();CGL.TextureEffect.setupBlending(e,g,r,o);function C(){g.removeDefine("ZERO_BLACK");g.removeDefine("ZERO_GREY");g.define("ZERO_"+(f.get()+"").toUpperCase())}function b(){g.removeDefine("WRAP_CLAMP");g.removeDefine("WRAP_REPEAT");g.removeDefine("WRAP_MIRROR");g.define("WRAP_"+(s.get()+"").toUpperCase())}function T(){g.removeDefine("INPUT_LUMINANCE");g.removeDefine("INPUT_REDGREEN");g.removeDefine("INPUT_RED");g.define("INPUT_"+(c.get()+"").toUpperCase())}n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(e))return;d.pushShader(g);d.currentTextureEffect.bind();d.setTexture(0,d.currentTextureEffect.getCurrentSourceTexture().tex);if(a.get())d.setTexture(1,a.get().tex);d.currentTextureEffect.finish();d.popShader();u.trigger()}};Ops.Gl.ImageCompose.PixelDisplacement_v3.prototype=new CABLES.Op;CABLES.OPS["c089646e-9324-48b2-8b32-81240408222e"]={f:Ops.Gl.ImageCompose.PixelDisplacement_v3,objName:"Ops.Gl.ImageCompose.PixelDisplacement_v3"};Ops.Gl.ImageCompose.EdgeDetection_v4=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={edgedetect_frag:"IN vec2 texCoord;\nUNI sampler2D tex;\nUNI float amount;\nUNI float width;\nUNI float strength;\nUNI float texWidth;\nUNI float texHeight;\nUNI float mulColor;\n\nconst vec4 lumcoeff = vec4(0.299,0.587,0.114, 0.);\n\nvec3 desaturate(vec3 color)\n{\n    return vec3(dot(vec3(0.2126,0.7152,0.0722), color));\n}\n\n{{CGL.BLENDMODES3}}\n\nvoid main()\n{\n    // vec4 col=vec4(1.0,0.0,0.0,1.0);\n\n    // float pixelX=0.27/texWidth;\n    // float pixelY=0.27/texHeight;\n    float pixelX=(width+0.01)*4.0/texWidth;\n    float pixelY=(width+0.01)*4.0/texHeight;\n\nvec2 tc=texCoord;\n// #ifdef OFFSETPIXEL\n    tc.x+=1.0/texWidth*0.5;\n    tc.y+=1.0/texHeight*0.5;\n// #endif\n    // col=texture(tex,texCoord);\n\n    float count=1.0;\n    vec4 base=texture(tex,texCoord);\n\n\tvec4 horizEdge = vec4( 0.0 );\n\thorizEdge -= texture( tex, vec2( tc.x - pixelX, tc.y - pixelY ) ) * 1.0;\n\thorizEdge -= texture( tex, vec2( tc.x - pixelX, tc.y     ) ) * 2.0;\n\thorizEdge -= texture( tex, vec2( tc.x - pixelX, tc.y + pixelY ) ) * 1.0;\n\thorizEdge += texture( tex, vec2( tc.x + pixelX, tc.y - pixelY ) ) * 1.0;\n\thorizEdge += texture( tex, vec2( tc.x + pixelX, tc.y     ) ) * 2.0;\n\thorizEdge += texture( tex, vec2( tc.x + pixelX, tc.y + pixelY ) ) * 1.0;\n\tvec4 vertEdge = vec4( 0.0 );\n\tvertEdge -= texture( tex, vec2( tc.x - pixelX, tc.y - pixelY ) ) * 1.0;\n\tvertEdge -= texture( tex, vec2( tc.x    , tc.y - pixelY ) ) * 2.0;\n\tvertEdge -= texture( tex, vec2( tc.x + pixelX, tc.y - pixelY ) ) * 1.0;\n\tvertEdge += texture( tex, vec2( tc.x - pixelX, tc.y + pixelY ) ) * 1.0;\n\tvertEdge += texture( tex, vec2( tc.x    , tc.y + pixelY ) ) * 2.0;\n\tvertEdge += texture( tex, vec2( tc.x + pixelX, tc.y + pixelY ) ) * 1.0;\n\n\thorizEdge*=base.a;\n\tvertEdge*=base.a;\n\n\n\tvec3 edge = sqrt((horizEdge.rgb/count * horizEdge.rgb/count) + (vertEdge.rgb/count * vertEdge.rgb/count));\n\n    edge=desaturate(edge);\n    edge*=strength;\n\n    if(mulColor>0.0) edge*=texture( tex, texCoord ).rgb*mulColor*4.0;\n    edge=max(min(edge,1.0),0.0);\n\n    //blend section\n    vec4 col=vec4(edge,base.a);\n\n    outColor=cgl_blendPixel(base,col,amount*base.a);\n}\n\n"};const n=e.inTrigger("Render"),a=CGL.TextureEffect.AddBlendSelect(e,"Blend Mode","normal"),r=e.inValueSlider("Amount",1),o=e.inFloat("Strength",4),i=e.inValueSlider("Width",.1),l=e.inValueSlider("Mul Color",0),s=e.outTrigger("Trigger");const c=e.patch.cgl;const f=new CGL.Shader(c,e.name,e);f.setSource(f.getDefaultVertexShader(),t.edgedetect_frag);const u=new CGL.Uniform(f,"t","tex",0),d=new CGL.Uniform(f,"f","amount",r),g=new CGL.Uniform(f,"f","strength",o),m=new CGL.Uniform(f,"f","width",i),p=new CGL.Uniform(f,"f","texWidth",128),x=new CGL.Uniform(f,"f","texHeight",128),h=new CGL.Uniform(f,"f","mulColor",l);CGL.TextureEffect.setupBlending(e,f,a,r);n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(e,3))return;c.pushShader(f);c.currentTextureEffect.bind();c.setTexture(0,c.currentTextureEffect.getCurrentSourceTexture().tex);p.setValue(c.currentTextureEffect.getCurrentSourceTexture().width);x.setValue(c.currentTextureEffect.getCurrentSourceTexture().height);c.currentTextureEffect.finish();c.popShader();s.trigger()}};Ops.Gl.ImageCompose.EdgeDetection_v4.prototype=new CABLES.Op;CABLES.OPS["0240e26e-b86d-43b2-8c72-6795bb86dc76"]={f:Ops.Gl.ImageCompose.EdgeDetection_v4,objName:"Ops.Gl.ImageCompose.EdgeDetection_v4"};Ops.Gl.ImageCompose.Levels_v2=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={levels_frag:"IN vec2 texCoord;\nUNI sampler2D tex;\nUNI float inMin;\nUNI float inMax;\nUNI float midPoint;\nUNI float outMax;\nUNI float outMin;\n\nvoid main()\n{\n    vec4 baseRGBA=texture(tex,texCoord);\n    vec3 base=baseRGBA.rgb;\n    vec3 inputRange = min(max(base - vec3(inMin), vec3(0.0)) / (vec3(inMax) - vec3(inMin)), vec3(outMax));\n\n    inputRange = pow(inputRange, vec3(1.0 / (1.5 - midPoint)));\n\n    outColor= vec4(mix(vec3(outMin), vec3(1.0), inputRange) ,baseRGBA.a);\n}"};const n=e.inTrigger("Render"),a=e.inValueSlider("In Min",0),r=e.inValueSlider("Midpoint",.5),o=e.inValueSlider("In Max",1),i=e.inValueSlider("Out Min",0),l=e.inValueSlider("Out Max",1),s=e.outTrigger("Next");const c=e.patch.cgl;const f=new CGL.Shader(c,e.name,e);const u=new CGL.Uniform(f,"f","inMin",a),d=new CGL.Uniform(f,"f","midPoint",r),g=new CGL.Uniform(f,"f","inMax",o),m=new CGL.Uniform(f,"f","outMin",i),p=new CGL.Uniform(f,"f","outMax",l),x=new CGL.Uniform(f,"t","tex",0);f.setSource(f.getDefaultVertexShader(),t.levels_frag);n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(e,3))return;c.pushShader(f);c.currentTextureEffect.bind();c.setTexture(0,c.currentTextureEffect.getCurrentSourceTexture().tex);c.currentTextureEffect.finish();c.popShader();s.trigger()}};Ops.Gl.ImageCompose.Levels_v2.prototype=new CABLES.Op;CABLES.OPS["cf49063c-a010-4e2b-add6-f8dea50392b5"]={f:Ops.Gl.ImageCompose.Levels_v2,objName:"Ops.Gl.ImageCompose.Levels_v2"};Ops.Gl.ImageCompose.Blur=function(){CABLES.Op.apply(this,arguments);const e=this;const t=e.attachments={blur_frag:"IN vec2 texCoord;\nUNI sampler2D tex;\nUNI float dirX;\nUNI float dirY;\nUNI float amount;\n\n#ifdef HAS_MASK\n    UNI sampler2D imageMask;\n#endif\n\nfloat random(vec3 scale, float seed)\n{\n    return fract(sin(dot(gl_FragCoord.xyz + seed, scale)) * 43758.5453 + seed);\n}\n\nvoid main()\n{\n    vec4 color = vec4(0.0);\n    float total = 0.0;\n\n    float am=amount;\n    #ifdef HAS_MASK\n        am=amount*texture(imageMask,texCoord).r;\n        if(am<=0.02)\n        {\n            outColor=texture(tex, texCoord);\n            return;\n        }\n    #endif\n\n    vec2 delta=vec2(dirX*am*0.01,dirY*am*0.01);\n\n\n    float offset = random(vec3(12.9898, 78.233, 151.7182), 0.0);\n\n    #ifdef MOBILE\n        offset = 0.1;\n    #endif\n\n    #if defined(FASTBLUR) && !defined(MOBILE)\n        const float range=5.0;\n    #else\n        const float range=20.0;\n    #endif\n\n    for (float t = -range; t <= range; t+=1.0)\n    {\n        float percent = (t + offset - 0.5) / range;\n        float weight = 1.0 - abs(percent);\n        vec4 smpl = texture(tex, texCoord + delta * percent);\n\n        smpl.rgb *= smpl.a;\n\n        color += smpl * weight;\n        total += weight;\n    }\n\n    outColor= color / total;\n\n    outColor.rgb /= outColor.a + 0.00001;\n\n\n\n}\n"};const n=e.inTrigger("render");const a=e.outTrigger("trigger");const r=e.inValueFloat("amount");const o=e.inSwitch("direction",["both","vertical","horizontal"],"both");const i=e.inValueBool("Fast",true);const l=e.patch.cgl;r.set(10);let s=new CGL.Shader(l,"blur");s.define("FASTBLUR");i.onChange=function(){if(i.get())s.define("FASTBLUR");else s.removeDefine("FASTBLUR")};s.setSource(s.getDefaultVertexShader(),t.blur_frag);let c=new CGL.Uniform(s,"t","tex",0);let f=new CGL.Uniform(s,"f","dirX",0);let u=new CGL.Uniform(s,"f","dirY",0);let d=new CGL.Uniform(s,"f","width",0);let g=new CGL.Uniform(s,"f","height",0);let m=new CGL.Uniform(s,"f","amount",r.get());r.onChange=function(){m.setValue(r.get())};let p=new CGL.Uniform(s,"t","imageMask",1);let x=false;function h(){if(l.currentTextureEffect.getCurrentSourceTexture().width==l.canvasWidth&&l.currentTextureEffect.getCurrentSourceTexture().height==l.canvasHeight){e.setUiError("warning","Full screen blurs are slow! Try reducing the resolution to 1/2 or a 1/4",0)}else{e.setUiError("warning",null)}}let v=0;o.onChange=function(){if(o.get()=="both")v=0;if(o.get()=="horizontal")v=1;if(o.get()=="vertical")v=2};let C=e.inTexture("mask");C.onChange=function(){if(C.get()&&C.get().tex)s.define("HAS_MASK");else s.removeDefine("HAS_MASK")};n.onTriggered=function(){if(!CGL.TextureEffect.checkOpInEffect(e))return;l.pushShader(s);d.setValue(l.currentTextureEffect.getCurrentSourceTexture().width);g.setValue(l.currentTextureEffect.getCurrentSourceTexture().height);h();if(v===0||v==2){l.currentTextureEffect.bind();l.setTexture(0,l.currentTextureEffect.getCurrentSourceTexture().tex);if(C.get()&&C.get().tex){l.setTexture(1,C.get().tex)}f.setValue(0);u.setValue(1);l.currentTextureEffect.finish()}if(v===0||v==1){l.currentTextureEffect.bind();l.setTexture(0,l.currentTextureEffect.getCurrentSourceTexture().tex);if(C.get()&&C.get().tex){l.setTexture(1,C.get().tex)}f.setValue(1);u.setValue(0);l.currentTextureEffect.finish()}l.popShader();a.trigger()}};Ops.Gl.ImageCompose.Blur.prototype=new CABLES.Op;CABLES.OPS["54f26f53-f637-44c1-9bfb-a2f2b722e998"]={f:Ops.Gl.ImageCompose.Blur,objName:"Ops.Gl.ImageCompose.Blur"};Ops.Gl.Texture_v2=function(){CABLES.Op.apply(this,arguments);const r=this;const e=r.attachments={};const o=r.inUrl("File",[".jpg",".png",".webp",".jpeg",".avif"]),t=r.inSwitch("Filter",["nearest","linear","mipmap"]),n=r.inValueSelect("Wrap",["repeat","mirrored repeat","clamp to edge"],"clamp to edge"),a=r.inSwitch("Anisotropic",["0","1","2","4","8","16"],"0"),i=r.inSwitch("Data Format",["R","RG","RGB","RGBA","SRGBA"],"RGBA"),l=r.inValueBool("Flip",false),s=r.inValueBool("Pre Multiplied Alpha",false),c=r.inValueBool("Active",true),f=r.inBool("Save Memory",true),u=r.outTexture("Texture"),d=r.inBool("Add Cachebuster",false),g=r.inTriggerButton("Reload"),m=r.outNumber("Width"),p=r.outNumber("Height"),x=r.outNumber("Aspect Ratio"),h=r.outBoolNum("Loaded",0),v=r.outBoolNum("Loading",0);const C=r.patch.cgl;r.toWorkPortsNeedToBeLinked(u);r.setPortGroup("Size",[m,p]);let b=null;let T=null;let A=null;let E=CGL.Texture.FILTER_MIPMAP;let _=CGL.Texture.WRAP_REPEAT;let O=0;let S=0;s.setUiAttribs({hidePort:true});s.onChange=o.onChange=i.onChange=d.onChange=l.onChange=L;a.onChange=t.onChange=R;n.onChange=M;t.set("mipmap");n.set("repeat");u.setRef(CGL.Texture.getEmptyTexture(C));g.onTriggered=L;c.onChange=function(){if(c.get()){if(b!=o.get()||!A)L();else u.setRef(A)}else{u.setRef(CGL.Texture.getEmptyTexture(C));m.set(CGL.Texture.getEmptyTexture(C).width);p.set(CGL.Texture.getEmptyTexture(C).height);if(A)A.delete();r.setUiAttrib({extendTitle:""});A=null}};const I=function(){const e=CGL.Texture.getTempTexture(C);u.setRef(e)};function L(e){clearTimeout(S);S=setTimeout(function(){P(e)},1)}function G(){if(i.get()=="R")return CGL.Texture.PFORMATSTR_R8UB;if(i.get()=="RG")return CGL.Texture.PFORMATSTR_RG8UB;if(i.get()=="RGB")return CGL.Texture.PFORMATSTR_RGB8UB;if(i.get()=="SRGBA")return CGL.Texture.PFORMATSTR_SRGBA8;return CGL.Texture.PFORMATSTR_RGBA8UB}function P(e){r.checkMainloopExists();if(!c.get())return;if(T)T=C.patch.loading.finished(T);T=C.patch.loading.start(r.objName,o.get(),r);let t=r.patch.getFilePath(String(o.get()));if(d.get()||e===true)t=CABLES.cacheBust(t);if(String(o.get()).indexOf("data:")==0)t=o.get();let n=false;b=o.get();if(o.get()&&o.get().length>1){h.set(false);v.set(true);const a=o.get();r.setUiAttrib({extendTitle:CABLES.basename(t)});if(n)r.refreshParams();C.patch.loading.addAssetLoadingTask(()=>{r.setUiError("urlerror",null);CGL.Texture.load(C,t,function(e,t){C.checkFrameStarted("texture inittexture");if(o.get()!=a){T=C.patch.loading.finished(T);return}if(A)A.delete();if(e){const n=CGL.Texture.getErrorTexture(C);u.setRef(n);r.setUiError("urlerror",'could not load texture: "'+o.get()+'"',2);T=C.patch.loading.finished(T);return}m.set(t.width);p.set(t.height);x.set(t.width/t.height);A=t;u.setRef(A);v.set(false);h.set(true);if(f.get())A.image=null;if(T){T=C.patch.loading.finished(T)}r.checkMainloopExists()},{anisotropic:O,wrap:_,flip:l.get(),unpackAlpha:s.get(),pixelFormat:G(),filter:E});r.checkMainloopExists()})}else{I();T=C.patch.loading.finished(T)}}function R(){if(t.get()=="nearest")E=CGL.Texture.FILTER_NEAREST;else if(t.get()=="linear")E=CGL.Texture.FILTER_LINEAR;else if(t.get()=="mipmap")E=CGL.Texture.FILTER_MIPMAP;else if(t.get()=="Anisotropic")E=CGL.Texture.FILTER_ANISOTROPIC;a.setUiAttribs({greyout:E!=CGL.Texture.FILTER_MIPMAP});O=parseFloat(a.get());L()}function M(){if(n.get()=="repeat")_=CGL.Texture.WRAP_REPEAT;if(n.get()=="mirrored repeat")_=CGL.Texture.WRAP_MIRRORED_REPEAT;if(n.get()=="clamp to edge")_=CGL.Texture.WRAP_CLAMP_TO_EDGE;L()}r.onFileChanged=function(e){if(o.get()&&o.get().indexOf(e)>-1){u.setRef(CGL.Texture.getEmptyTexture(r.patch.cgl));u.setRef(CGL.Texture.getTempTexture(C));P(true)}}};Ops.Gl.Texture_v2.prototype=new CABLES.Op;CABLES.OPS["790f3702-9833-464e-8e37-6f0f813f7e16"]={f:Ops.Gl.Texture_v2,objName:"Ops.Gl.Texture_v2"};window.addEventListener("load",function(e){CABLES.jsLoaded=new Event("CABLES.jsLoaded");document.dispatchEvent(CABLES.jsLoaded)});

@@ -272,7 +272,7 @@ revealTimeline.to(container1,{
          //container1.style.filter = "brightness(1) blur(18px)";
           container1.style.transition = "filter 0.6s ease";
          // container2.style.filter = "brightness(1.8) blur(18px)";
-         container2.style.filter = "brightness(1.6) blur(18px)";
+         container2.style.filter = "brightness(1.2) blur(13px)";
           container2.style.transition = "filter 0.6s ease";
        
           
@@ -283,7 +283,8 @@ revealTimeline.to(container1,{
           container1.style.filter = "brightness(1.8) grayscale(0.8) opacity(0.6) drop-shadow(4px 4px 6px rgba(255, 255, 255, 0.745))";
 
           //container2.style.filter = "opacity(0.6) brightness(1.5)";
-          container2.style.filter = "opacity(0.9) brightness(1.3)";
+          //container2.style.filter = "opacity(0.9) brightness(1.3)";
+          container2.style.filter = "opacity(1) brightness(1.1)";
 
       });
 
