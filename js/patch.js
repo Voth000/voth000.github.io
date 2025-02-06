@@ -20397,3 +20397,18 @@ if(!CABLES.exportedPatches)CABLES.exportedPatches={};CABLES.exportedPatches["SHZ
 
 
 
+function touchHandler(event) {
+    var touch = event.changedTouches[0];
+    var simulatedEvent = new MouseEvent({
+        clientX: touch.clientX,
+        clientY: touch.clientY,
+        bubbles: true,
+        cancelable: true
+    });
+    touch.target.dispatchEvent(simulatedEvent);
+}
+
+// disable rubberband effect on mobile devices
+document.getElementById("glcanvas").addEventListener("touchstart", touchHandler, true);
+document.getElementById("glcanvas").addEventListener("touchmove", touchHandler, true);
+document.getElementById("glcanvas").addEventListener("touchend", touchHandler, true);
