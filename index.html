@@ -409,9 +409,36 @@
     });
 
     
-document.getElementById('glcanvas').addEventListener('pointerdown', function(event) {
-    console.log("Pointer down detected", event);
-});
+// Fix touch interactions
+function enableTouchInteraction() {
+    const canvas = document.getElementById("glcanvas");
+    if (!canvas) return;
+
+    // Prevent default touch gestures
+    canvas.addEventListener("touchmove", (e) => { e.preventDefault(); }, { passive: false });
+
+    // Convert touch events to pointer events for better compatibility
+    function touchToPointer(eventType, touchEvent) {
+        const touch = touchEvent.changedTouches[0];
+        if (!touch) return;
+        const simulatedEvent = new PointerEvent(eventType, {
+            bubbles: true,
+            cancelable: true,
+            clientX: touch.clientX,
+            clientY: touch.clientY,
+            pointerId: touch.identifier,
+            pointerType: "touch"
+        });
+        touch.target.dispatchEvent(simulatedEvent);
+    }
+
+    canvas.addEventListener("touchstart", (e) => touchToPointer("pointerdown", e), true);
+    canvas.addEventListener("touchmove", (e) => touchToPointer("pointermove", e), true);
+    canvas.addEventListener("touchend", (e) => touchToPointer("pointerup", e), true);
+    canvas.addEventListener("touchcancel", (e) => touchToPointer("pointercancel", e), true);
+}
+
+document.addEventListener("DOMContentLoaded", enableTouchInteraction);
 </script>
 <script src="index.js" type="module"></script>
 <script src="main.js" defer></script>
