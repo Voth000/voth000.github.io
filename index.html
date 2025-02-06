@@ -409,12 +409,7 @@
     });
 
     // disable rubberband effect on mobile devices
-    document.getElementById('glcanvas').addEventListener('touchmove', (e) => {
-    if (e.target === document.getElementById('glcanvas')) {
-        e.preventDefault(); // Prevents only if interacting with glcanvas
-    }
-}, { passive: false });
-
+    document.getElementById('glcanvas').addEventListener('touchmove', (e)=>{ }, true);
 </script>
 <script src="index.js" type="module"></script>
 <script src="main.js" defer></script>
