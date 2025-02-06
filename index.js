@@ -186,6 +186,13 @@ class SceneManager {
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.autoRotate = false;
         this.controls.enableZoom = false;
+        this.controls.touchPanSpeed = 0; // Prevents accidental touch panning
+    this.renderer.domElement.addEventListener('touchstart', (e) => {
+        if (e.touches.length === 1) {
+            e.stopPropagation();
+            e.preventDefault(); // Prevents OrbitControls from rotating on single touch
+        }
+    }, { passive: false });
     }
     
 
