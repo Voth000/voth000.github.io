@@ -495,7 +495,7 @@ background-size: cover;
  *::-webkit-scrollbar-thumb {
     background-color: #9b9b9b;
     border-radius: 0px;
-    border: 2px dashed #ffffff;
+    border: 4px dashed #ffffff;
     
 
   }
@@ -1133,7 +1133,7 @@ b {
 
 .push {
     border-radius: 50%;
-    filter: brightness(1.1) drop-shadow(1px 16px 20px rgb(157, 255, 0));
+    filter: brightness(1.1) ;
     box-shadow: rgb(255 255 255 / 67%) 4px 24px 13.6px 1px, rgb(212 212 212 / 67%) 2px 3px 11.5px 4px;
   font-size: 24px;
   font-family: 'p1';
@@ -1152,7 +1152,7 @@ background-blend-mode: darken, luminosity;
 }
 
 .push:hover {
-    filter: brightness(1.8) drop-shadow(1px 16px 20px rgb(224, 124, 255));
+    filter: brightness(1.8) drop-shadow(1px 16px 20px rgba(125, 255, 255, 0.807));
    transform:  translateY(10px);
    box-shadow: rgb(255 255 255 / 67%) 4px 4px 13.6px 1px, rgb(212 212 212 / 67%) 2px 3px 11.5px 4px;
 }
