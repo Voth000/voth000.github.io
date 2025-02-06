@@ -186,7 +186,7 @@ class SceneManager {
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.autoRotate = false;
         this.controls.enableZoom = false;
-        
+        this.controls.enabled = !('ontouchstart' in window);
 
     }
     
