@@ -41,6 +41,10 @@
             font-family: 'm1';
             src: url('./Millionaire-Script.ttf');
         }
+
+       
+        
+       
         nav {
 
             backdrop-filter: blur(1px);
@@ -320,7 +324,7 @@
           }
           
           .active, .accordion:hover {
-           
+           cursor: pointer;
           }
           
           .panel {
@@ -392,17 +396,27 @@
             }
          
             .link {
-            
-                height: 200px;
+                max-height: 200px;
+                height: 100%;
+                
                 width: auto;
                     }
 
         .link img {
-            object-fit: cover;
+           
+            object-fit: contain;
             height: 100%;
             width: 100%;
-            max-width: 200px;
-            max-height: 100%;
+            /* max-width: 200px; */
+            max-height: 200px;
+        }
+
+        .link video {
+            
+            height: 100%;
+          
+          
+            max-height: 200px;
         }
         
         .tit {
@@ -662,7 +676,7 @@ transform: scale(1.05);
         </div>
     </div>
 
-    <div class="card">
+    <div id="3d" class="card">
         <div class="accordion">
             <div><b>3D</b></div>
          
@@ -670,45 +684,96 @@ transform: scale(1.05);
         </div>
         <div class="panel">
             <div class="work">
-                <div class="name"> Work Name</div>
-                <div class="link" onclick="window.open('https://voth000.github.io/bhn/','Bhn');"><img src="./assets/emp.jpg" alt=""> </div> 
+                <div class="name"> <i>{2025}</i> Blu.ug reel promos</div>
+                <div class="link" onclick="window.open('https://www.instagram.com/p/DFMtfbztgga/','blucrew instagram post');">
+                    <video playsinline autoPlay muted id="video1" style="width:100%; height=100%" autoplay="autoPlay" loop="true" src="./assets/bluvid.mp4" alt="blu reels"> </video>
+                </div> 
                  <div class="tit">
-                     <div id="tag">#tag1</div>
-                     <div id="tag">#tag2</div>
+                     <div id="tag">#3D</div>
+                     <div id="tag">✨: Blender</div>
                  </div>
                  </div>
                  <div class="work">
-                    <div class="name"> Work Name</div>
-                    <div class="link" onclick="window.open('https://voth000.github.io/bhn/','Bhn');"><img src="./assets/emp.jpg" alt=""> </div> 
+                    <div class="name"> <i>{2025}</i> Snake</div>
+                    <div class="link" onclick="window.open('','Bhn');"><img src="./assets/snake.jpg" alt="snake3d"> </div> 
                      <div class="tit">
-                         <div id="tag">#tag1</div>
-                         <div id="tag">#tag2</div>
+                         <div id="tag">#3D</div>
+                         <div id="tag">✨: Blender</div>
                      </div>
                      </div>
                      <div class="work">
-                        <div class="name"> Work Name</div>
-                        <div class="link" onclick="window.open('https://voth000.github.io/bhn/','Bhn');"><img src="./assets/emp.jpg" alt=""> </div> 
+                        <div class="name"> <i>{2024}</i> Event Poster</div>
+                        <div class="link" onclick="window.open('','Bhn');"><img src="./assets/poster.png" alt="Eventposter"> </div> 
                          <div class="tit">
-                             <div id="tag">#tag1</div>
-                             <div id="tag">#tag2</div>
+                             <div id="tag">#3D</div>
+                             <div id="tag">✨: Blender</div>
                          </div>
                          </div>
                          <div class="work">
-                            <div class="name"> Work Name</div>
-                            <div class="link" onclick="window.open('https://voth000.github.io/bhn/','Bhn');"><img src="./assets/emp.jpg" alt=""> </div> 
+                            <div class="name"> <i>{2024}</i> Loop</div>
+                            <div class="link" onclick="window.open('','Bhn');">
+                                <video playsinline autoPlay muted id="video1" style="width:100%; height=100%" autoplay="autoPlay" loop="true" src="./assets/loop.mp4" alt="loop animation"> </video> 
+                            </div> 
                              <div class="tit">
-                                 <div id="tag">#tag1</div>
-                                 <div id="tag">#tag2</div>
+                                <div id="tag">#3D</div>
+                                <div id="tag">✨: Blender</div>
                              </div>
                              </div>
                              <div class="work">
-                                <div class="name"> Work Name</div>
-                                <div class="link" onclick="window.open('https://voth000.github.io/bhn/','Bhn');"><img src="./assets/emp.jpg" alt=""> </div> 
+                                <div class="name"> <i>{2024}</i> Logo</div>
+                                <div class="link" onclick="window.open('','heart3D');">
+
+                                <video playsinline autoPlay muted id="video1" style="width:100%; height=100%" autoplay="autoPlay" loop="true" src="./assets/2.mp4" alt="logo animation"> </video> 
+                            </div> 
                                  <div class="tit">
-                                     <div id="tag">#tag1</div>
-                                     <div id="tag">#tag2</div>
+                                     <div id="tag">#3D</div>
+                                     <div id="tag">✨: Blender</div>
+                                     <div id="tag">✨: Touchdesigner</div>
                                  </div>
-                                 </div>        </div>
+                            </div> 
+                            <div class="work">
+                                <div class="name"> <i>{2023}</i> Album Cover</div>
+                                <div class="link" onclick="window.open('','Bhn');"><img src="./assets/Cover.png" alt="Album Cover"> </div> 
+                                 <div class="tit">
+                                     <div id="tag">#3D</div>
+                                     <div id="tag">✨: Blender</div>
+                                 </div>
+                                 </div>    
+                                 <div class="work">
+                                    <div class="name"> <i>{2022}</i> Animation Series</div>
+                                    <div class="link" onclick="window.open('https://www.youtube.com/watch?v=PZkL-6jITFw&list=PLt5rgC2HB9V0wIqMlHiHjZ9CiQyiTwOuv&index=1','3Danimations');">
+                                        <video playsinline autoPlay muted id="video1" style="width:100%; height=100%" autoplay="autoPlay" loop="true" src="./video/7.mp4" alt="anininja"> </video>
+                                     </div> 
+                                     <div class="tit">
+                                         <div id="tag">#3D</div>
+                                         <div id="tag">✨: Blender</div>
+                                     </div>
+                                     </div>     
+                                     <div class="work">
+                                        <div class="name"> <i>{2022}</i> Small Game</div>
+                                        <div class="link" onclick="window.open('https://voth000.github.io/archive101/','ArchivePage');">
+                                            <video playsinline autoPlay muted id="video1" style="width:100%; height=100%" autoplay="autoPlay" loop="true" src="./video/6.mp4" alt="anininja"> </video>
+                                        </div> 
+                                         <div class="tit">
+                                             <div id="tag">#3D</div>
+                                             <div id="tag">✨: Blender</div>
+                                             <div id="tag">✨: Three Js</div>
+                                         </div>
+                                         </div>    
+                                         <div class="work">
+                                            <div class="name"> <i>{2022}</i>Web 3D Objects</div>
+                                            <div class="link" onclick="window.open('https://voth000.github.io/3Ditemstown/','heart3D');">
+                                                <video playsinline autoPlay muted id="video1" style="width:100%; height=100%" autoplay="autoPlay" loop="true" src="./video/3d2.mp4" alt="Pointcloud3D"> </video>
+                                            </div> 
+                                             <div class="tit">
+                                                 <div id="tag">#3D</div>
+                                                 <div id="tag">✨: Blender</div>
+                                                 <div id="tag">✨: Three Js</div>
+                                             </div>
+                                             </div>   
+                                    
+                                
+        </div>
     </div>
 
     <div class="card">

@@ -364,6 +364,7 @@ video {
     border: solid inside 1px var(--grey1);
     box-shadow: var(--box2);
 }
+
 .tit {
     box-shadow: rgb(255 255 255 / 27%) 2px 4px 13.6px 1px, rgb(212 212 212 / 63%) 2px 3px 11.5px -1px;
     padding: 0em 0.25em;
