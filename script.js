@@ -43,6 +43,10 @@ document.addEventListener("DOMContentLoaded", async () => {
     let rtA = new THREE.WebGLRenderTarget(width / 2, height / 2, options);
     let rtB = new THREE.WebGLRenderTarget(width / 2, height / 2, options);
 
+    function getTexelSize() {
+        return window.innerWidth < 500 ? 1.0 : 5.0;
+    }
+
     const simMaterial = new THREE.ShaderMaterial({
         uniforms: {
             textureA: { value: null },
@@ -50,6 +54,7 @@ document.addEventListener("DOMContentLoaded", async () => {
             resolution: { value: new THREE.Vector2(width / 2, height / 2) },
             time: { value: 0 },
             frame: { value: 0 },
+            texelSize: { value: new THREE.Vector2(getTexelSize() / width, getTexelSize() / height) }, // ✅ Dynamic texelSize
         },
         vertexShader: simulationVertexShader,
         fragmentShader: simulationFragmentShader,
@@ -98,27 +103,38 @@ document.addEventListener("DOMContentLoaded", async () => {
         simMaterial.uniforms.mouse.value.set(-10, -10);
     });
 
-    // ✅ Touch Support for Mobile
+    // ✅ Allow scrolling if the user is not touching the canvas
     renderer.domElement.addEventListener("touchstart", (e) => {
-        e.preventDefault();
-        if (e.touches.length > 0) {
-            updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+        if (e.target === renderer.domElement) {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+            }
         }
-    });
+    }, { passive: false });
 
     renderer.domElement.addEventListener("touchmove", (e) => {
-        e.preventDefault();
-        if (e.touches.length > 0) {
-            updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+        if (e.target === renderer.domElement) {
+            e.preventDefault();
+            if (e.touches.length > 0) {
+                updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+            }
         }
-    });
+    }, { passive: false });
 
     renderer.domElement.addEventListener("touchend", () => {
         simMaterial.uniforms.mouse.value.set(-10, -10);
     });
 
+    // ✅ Define updateTexelSize properly
+    function updateTexelSize() {
+        const texel = getTexelSize();
+        simMaterial.uniforms.texelSize.value.set(texel / width, texel / height);
+    }
+
     // ✅ Handle Window Resize
     window.addEventListener("resize", () => {
+        const dpr = Math.min(window.devicePixelRatio, 2);
         width = window.innerWidth * dpr;
         height = window.innerHeight * dpr;
 
@@ -127,6 +143,8 @@ document.addEventListener("DOMContentLoaded", async () => {
         rtB.setSize(width / 2, height / 2);
 
         simMaterial.uniforms.resolution.value.set(width / 2, height / 2);
+        updateTexelSize();
+
         frame = 0;
     });
 
@@ -150,5 +168,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         requestAnimationFrame(animate);
     };
 
+    updateTexelSize(); // ✅ Initialize texelSize correctly
     animate();
 });
