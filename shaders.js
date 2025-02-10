@@ -28,7 +28,7 @@ vec4 data = texture2D(textureA, uv);
 float pressure = data.x;
 float pVel = data.y;
 
-vec2 texelSize = 4.0 / resolution;
+vec2 texelSize = 5.0 / resolution;
 float p_right = texture2D(textureA, uv + vec2(texelSize.x, 0.0)).x;
     float p_left = texture2D(textureA, uv + vec2(-texelSize.x, 0.0)).x;
     float p_up = texture2D(textureA, uv + vec2(0.0, texelSize.y)).x;
@@ -103,18 +103,18 @@ void main() {
     vec4 data = texture2D(textureA, vUv);
     vec3 normal = normalize(vec3(-data.z, 0.2, -data.w));
 
-    float timeOffset = 0.02 * sin(time * 3.0);
+    float timeOffset = 0.2 * sin(time * 3.0);
 
     // Adjust RGB offsets with enhanced brightness
     vec2 offsetG = 0.02 * normal.xz - timeOffset * vec2(0.005, 0.007);
-    vec2 offsetB = 0.022 * normal.xz + timeOffset * vec2(-0.007, 0.005);
+    vec2 offsetB = 0.01 * normal.xz + timeOffset * vec2(-0.007, 0.005);
 
     // Sample texture at offset positions
     vec4 colG = texture2D(textureA, vUv + offsetG);
     vec4 colB = texture2D(textureA, vUv + offsetB);
 
     // Boost brightness and apply gamma correction
-    vec3 color = vec3(0.0, 1.2 * pow(colG.g, 0.9), 1.3 * pow(colB.b, 0.9));
+    vec3 color = vec3(0.0, 1.2 * pow(colG.g, 1.0), 1.2 * pow(colB.b, 1.0));
 
     // Ensure transparency is smooth
     float alpha = max(color.g, color.b); 

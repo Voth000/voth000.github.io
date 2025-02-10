@@ -44,7 +44,7 @@
     --t2: 16px;
     --bold: 800;
     --bgtrans: linear-gradient(180deg, rgba(247, 247, 247, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%);
-    --test:linear-gradient(rgba(255, 255, 255, 0.831) 5%, 20%, rgb(119 119 119) 65%);
+    --test:linear-gradient(rgba(255, 255, 255, 0.831) 5%, 20%, rgb(139 139 139 / 66%) 65%);
     --test2: linear-gradient(rgba(255, 255, 255, 0.052) 5%, 90%, rgba(135, 135, 135, 0.808) 10%);
 --box: 4px 4px 4px 0px rgba(105, 105, 105, 0.448);
 --box2: 2px 2px 2px 0px rgba(105, 105, 105, 0.363);
@@ -68,6 +68,83 @@ gap: 1em;
 header:hover {
     z-index: 6;
 } */
+
+
+@media (max-width: 1024px) {
+    div#next h1 {
+        font-size: 2em;
+    }
+    #next {
+        height: 8em;
+        }
+  #boall {
+   
+            z-index: 3;
+            position: relative;
+           /* box-shadow: rgb(255 255 255) 2px 4px 13.6px 1px, rgb(255 255 255) 2px 3px 11.5px -1px;*/
+          grid-template-rows: unset !important ;
+          grid-template-columns: unset !important;
+          padding: 1em;
+            display: grid;
+            height: 100%;
+            /*width: 100%;*/
+            grid-template-areas:
+            "f1"
+            "d1 "
+            "a1"
+            "b1"
+            "e1"
+            "g1"
+            ; 
+            overflow: hidden;
+        }
+  .boagrid.g #inside {
+            display: flex
+        ;
+            flex-wrap: wrap;
+        }
+        #inside {
+            
+            padding: 0em 1em 1em 1em;
+        }
+        
+
+}
+
+
+@media (min-width: 1024px) {
+    div#next h1 {
+        font-size: 5em;
+    }
+   #next {
+        height: 14em;
+        }
+   #boall {
+   
+            z-index: 3;
+            position: relative;
+           /* box-shadow: rgb(255 255 255) 2px 4px 13.6px 1px, rgb(255 255 255) 2px 3px 11.5px -1px;*/
+          grid-template-rows: 1fr 0.5fr 1fr;
+          grid-template-columns: 1fr 0.5fr 1fr;
+          padding: 2em;
+            display: grid;
+            height: 90vh;
+            /*width: 100%;*/
+            grid-template-areas:
+            "d1 f1 b1 "
+            "d1 e1 a1 "
+            " g1 e1 a1"; 
+            overflow: hidden;
+        }
+        .boagrid.g #inside {
+            display: flex;
+            flex-direction: row;
+        }
+        #inside {
+            
+            padding: 0em 1em 2em 1em;
+        }
+}
 
 .cent {
     height: 100%;
@@ -156,9 +233,7 @@ filter: brightness(1.1) contrast(1.4);
   
 }
 
-@media (max-width: 500px) {
 
-}
 
 
 
@@ -805,7 +880,6 @@ position: relative;
 
  #next {
 
-    height: 14em;
     width: 100%;
     backdrop-filter: blur(1px);
     z-index: 2;
@@ -827,7 +901,7 @@ opacity: 0;
     pointer-events: none;
     margin: 0;
     /* backdrop-filter: blur(0.700000762939453px);*/
-    font-size: 5em;
+    
     font-family: "p1";
     text-align: center;
     background: linear-gradient(to bottom right, #dcedffbe 50%, rgba(239, 255, 234, 0.832) 50%) bottom right / 50% 50% no-repeat, linear-gradient(to bottom left, #defeffe3 20%, rgba(232, 251, 255, 0.88) 50%) bottom left / 50% 50% no-repeat, linear-gradient(to top left, #ffffffeb 25%, rgba(255, 255, 255, 0.917) 50%) top left / 50% 50% no-repeat, linear-gradient(to top right, #e2e2e2ee 5%, rgb(255 255 255) 50%) top right / 50% 50% no-repeat;
@@ -950,10 +1024,7 @@ border-left: 0.5px solid var(--new);
     max-height: 60px ;
 }
 
-.boagrid.g #inside {
-    display: flex;
-    flex-direction: row;
-}
+
 
 .boagrid.e #inside {
     display: flex;
@@ -1016,26 +1087,10 @@ border-left: 0.5px solid var(--new);
    display: grid;
     width: -webkit-fill-available;
     gap: 0.5em;
-    padding: 0em 1em 2em 1em;
+    
 }
 
-#boall {
-   
-    z-index: 3;
-    position: relative;
-   /* box-shadow: rgb(255 255 255) 2px 4px 13.6px 1px, rgb(255 255 255) 2px 3px 11.5px -1px;*/
-  grid-template-rows: 1fr 0.5fr 1fr;
-  grid-template-columns: 1fr 0.5fr 1fr;
-  padding: 2em;
-    display: grid;
-    height: 90vh;
-    /*width: 100%;*/
-    grid-template-areas:
-    "d1 f1 b1 "
-    "d1 e1 a1 "
-    " g1 e1 a1"; 
-    overflow: hidden;
-}
+
 
 /* Scale the hovered .boagrid up */
 /*.boagrid:hover {
@@ -1155,3 +1210,6 @@ background-blend-mode: darken, luminosity;
    transform:  translateY(10px);
    box-shadow: rgb(255 255 255 / 67%) 4px 4px 13.6px 1px, rgb(212 212 212 / 67%) 2px 3px 11.5px 4px;
 }
+
+
+
