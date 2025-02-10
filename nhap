@@ -953,3 +953,26 @@ const animate = () => {
 };
 animate();
 });
+
+
+
+document.addEventListener("touchstart", (e) => {
+        if (e.target === renderer.domElement) {
+            if (e.touches.length > 0) {
+                updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }
+    }, { passive: true }); // ✅ Allow scrolling
+    
+    document.addEventListener("touchmove", (e) => {
+        if (e.target === renderer.domElement) {
+            if (e.touches.length > 0) {
+                updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+            }
+        }
+    }, { passive: true }); // ✅ Never block scrolling
+    
+    document.addEventListener("touchend", () => {
+        simMaterial.uniforms.mouse.value.set(-10, -10);
+    });
+    

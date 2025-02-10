@@ -43,13 +43,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     let rtA = new THREE.WebGLRenderTarget(width / 2, height / 2, options);
     let rtB = new THREE.WebGLRenderTarget(width / 2, height / 2, options);
 
-    function updateTexelSize() {
-        const screenWidth = window.innerWidth;
-        const texelFactor = screenWidth < 500 ? 1.0 : 5.0; // Adjust texelSize based on screen size
-    
-        // Set texelSize uniform
-        simMaterial.uniforms.texelSize.value.set(texelFactor / width, texelFactor / height);
-    }
+   
 
     const simMaterial = new THREE.ShaderMaterial({
         uniforms: {
@@ -110,11 +104,9 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     document.addEventListener("touchstart", (e) => {
         if (e.target === renderer.domElement) {
-            if (e.touches.length > 0) {
-                updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
-            }
+            e.preventDefault(); // ✅ Prevent scrolling only if touching canvas
         }
-    }, { passive: true }); // ✅ Allow scrolling
+    }, { passive: false });
     
     document.addEventListener("touchmove", (e) => {
         if (e.target === renderer.domElement) {
@@ -122,14 +114,14 @@ document.addEventListener("DOMContentLoaded", async () => {
                 updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
             }
         }
-    }, { passive: true }); // ✅ Never block scrolling
+    }, { passive: true }); // ✅ Allow scrolling
+    
     
     document.addEventListener("touchend", () => {
         simMaterial.uniforms.mouse.value.set(-10, -10);
     });
     
 
-updateTexelSize();
 
     // ✅ Handle Window Resize
     window.addEventListener("resize", () => {
