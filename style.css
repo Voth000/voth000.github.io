@@ -104,11 +104,25 @@ header:hover {
             flex-wrap: wrap;
         }
         #inside {
-            
+            gap: 8px;
             padding: 0em 1em 1em 1em;
         }
         
-
+        .bio span {
+            font-size: 2em;
+        }
+        #t2 .cap1 {
+            font-size: 12px;
+        }
+        #t3 .cap1 {
+            font-size: 12px;
+        }
+        #t1 .cap1 {
+            font-size: 12px;
+        }
+        #t4 .cap1 {
+            font-size: 12px;
+        }
 }
 
 
@@ -141,8 +155,11 @@ header:hover {
             flex-direction: row;
         }
         #inside {
-            
+            gap: 0.5em;
             padding: 0em 1em 2em 1em;
+        }
+        .bio span {
+            font-size: 5em;
         }
 }
 
@@ -252,7 +269,7 @@ padding: 4px 8px;
 background-color: var(--grey2);
 backdrop-filter: blur(20px);
     font-family: 'Unbounded', monospace;
-    font-size: 16px;
+   
     color: #000000;
 }
 
@@ -691,7 +708,7 @@ canvas {
 .bio span {
     filter:  drop-shadow(1px 1px 2px rgba(186, 186, 186, 0.14)) contrast(1.2) saturate(1.4);    
  display: block;
-    font-size: 5em;
+  
   letter-spacing: 0rem;
   font-family: 'Unbounded', monospace;
   font-weight: 200;
@@ -1086,7 +1103,7 @@ border-left: 0.5px solid var(--new);
     /* background: linear-gradient(rgb(255 255 255 / 71%) 0%, rgb(255 255 255 / 10%) 100%); */
    display: grid;
     width: -webkit-fill-available;
-    gap: 0.5em;
+   
     
 }
 

@@ -170,14 +170,14 @@ class SceneManager {
         this.circle = new THREE.LineLoop(geometry, material);
         this.circle.rotation.x = Math.PI / -2;
         this.circle.rotation.y = Math.PI / -8;
-        this.circle.scale.set(0.6, 0.6, 0.6);
+        this.circle.scale.set(0.5, 0.5, 0.5);
         this.circle.position.y = 1;
         this.scene.add(this.circle);
 
         this.circle1 = new THREE.LineLoop(geometry, material);
         this.circle1.rotation.x = Math.PI / -2;
         this.circle1.rotation.y = Math.PI / -8;
-        this.circle1.scale.set(0.6, 0.6, 0.6);
+        this.circle1.scale.set(0.5, 0.5, 0.5);
         this.circle1.position.y = 1;
         this.scene.add(this.circle1);
     }
@@ -305,7 +305,7 @@ class SceneManager {
             }
     
             // Repeat the loop after 4 seconds
-            this.autoLoopTimeout = setTimeout(loopHoverEffects, 4000);
+            this.autoLoopTimeout = setTimeout(loopHoverEffects, 8000);
         };
     
         loopHoverEffects();
@@ -331,7 +331,7 @@ class SceneManager {
         boxs[this.activeIndex].classList.add('active');
         bebes[this.activeIndex].classList.add('active');
 
-        this.autoLoopTimeout = setTimeout(() => this.autoSwitchButton(), 2000);
+        this.autoLoopTimeout = setTimeout(() => this.autoSwitchButton(), 8000);
 
     
         // Animate the new "bebe" element
@@ -395,7 +395,7 @@ class SceneManager {
             this.root1.scale.set(isSmallScreen ? 2 : 4, isSmallScreen ? 2 : 4, isSmallScreen ? 2 : 4);
             this.root1.position.set(
                 isSmallScreen ? 0 : -0.5, 
-                isSmallScreen ? -3 : -6.5, 
+                isSmallScreen ? 2 : -2.5, 
                 0
             );
         }
@@ -405,13 +405,13 @@ animate() {
         requestAnimationFrame(() => this.animate());
        
     const now = Date.now();
-        if (!this.isHovering && now - this.lastAutoSwitchTime > 4000) {
+        if (!this.isHovering && now - this.lastAutoSwitchTime > 8000) {
             this.autoSwitchButton();
             this.lastAutoSwitchTime = now;
         }
 
 
-        this.circle1.rotation.z += 0.007;
+        this.circle1.rotation.z += 0.008;
         this.updateCirclePoints();
         this.positionButtons();
         this.positionArrow();
