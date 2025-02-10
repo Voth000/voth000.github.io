@@ -5,51 +5,49 @@ import {
     renderFragmentShader,
 } from "./shaders.js";
 
-document.addEventListener("DOMContentLoaded", () => {
+document.addEventListener("DOMContentLoaded", async () => {
     const canvas = document.getElementById('glcanvas');
     if (!canvas) {
         console.error("Canvas element not found!");
         return;
     }
 
-    const scene = new THREE.Scene();
-    const simScene = new THREE.Scene();
-
-    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
     const renderer = new THREE.WebGLRenderer({
-        canvas: canvas, // ✅ Use the existing canvas
+        canvas: canvas,
         antialias: true,
         alpha: true,
         preserveDrawingBuffer: true,
         powerPreference: "high-performance",
-
     });
 
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
-    renderer.setSize(window.innerWidth / 2, window.innerHeight / 2, false);
+    const scene = new THREE.Scene();
+    const simScene = new THREE.Scene();
+    const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-    const mouse = new THREE.Vector2();
-    let frame = 0;
+    const dpr = Math.min(window.devicePixelRatio, 2);
+    let width = window.innerWidth * dpr;
+    let height = window.innerHeight * dpr;
 
-    const width = window.innerWidth * window.devicePixelRatio;
-    const height = window.innerHeight * window.devicePixelRatio;
+    renderer.setPixelRatio(dpr);
+    renderer.setSize(width / 2, height / 2, false);
+
     const options = {
         format: THREE.RGBAFormat,
-        type: THREE.FloatType,
+        type: THREE.HalfFloatType,
         minFilter: THREE.LinearFilter,
         magFilter: THREE.LinearFilter,
         stencilBuffer: false,
         depthBuffer: false,
     };
 
-    let rtA = new THREE.WebGLRenderTarget(width, height, options);
-    let rtB = new THREE.WebGLRenderTarget(width, height, options);
+    let rtA = new THREE.WebGLRenderTarget(width / 2, height / 2, options);
+    let rtB = new THREE.WebGLRenderTarget(width / 2, height / 2, options);
 
     const simMaterial = new THREE.ShaderMaterial({
         uniforms: {
             textureA: { value: null },
-            mouse: { value: mouse },
-            resolution: { value: new THREE.Vector2(width, height) },
+            mouse: { value: new THREE.Vector2(-10, -10) },
+            resolution: { value: new THREE.Vector2(width / 2, height / 2) },
             time: { value: 0 },
             frame: { value: 0 },
         },
@@ -64,13 +62,9 @@ document.addEventListener("DOMContentLoaded", () => {
         },
         vertexShader: renderVertexShader,
         fragmentShader: renderFragmentShader,
-        transparent: true, // Enable transparency
-        depthWrite: false,   // ✅ Avoids z-buffer issues
-
+        transparent: true,
+        depthWrite: false,
     });
-    
-    
-    
 
     const plane = new THREE.PlaneGeometry(2, 2);
     const simQuad = new THREE.Mesh(plane, simMaterial);
@@ -79,87 +73,82 @@ document.addEventListener("DOMContentLoaded", () => {
     simScene.add(simQuad);
     scene.add(renderQuad);
 
-    
-    window.addEventListener("resize", () => {
-        const dpr = Math.min(window.devicePixelRatio, 2);
-        const newWidth = Math.round(window.innerWidth * dpr);
-        const newHeight = Math.round(window.innerHeight * dpr);
-    
-        // Keep the rendering at half resolution for performance
-        renderer.setSize(newWidth / 2, newHeight / 2, false); 
-        rtA.setSize(newWidth / 2, newHeight / 2);
-        rtB.setSize(newWidth / 2, newHeight / 2);
-    
-        // Update shader resolution
-        simMaterial.uniforms.resolution.value.set(newWidth / 2, newHeight / 2);
-        
-        // Restart the simulation from the beginning
-        frame = 0;
-    });
-    
-    
+    let frame = 0;
+
+    // **✅ Correct Mouse & Touch Position Mapping**
+    function updateMousePosition(clientX, clientY) {
+        const rect = renderer.domElement.getBoundingClientRect();
+
+        let x = (clientX - rect.left) / rect.width;
+        let y = 1.0 - (clientY - rect.top) / rect.height; // Flip Y
+
+        // Scale to match simulation resolution (which is /2 of actual resolution)
+        x *= width / 2;
+        y *= height / 2;
+
+        simMaterial.uniforms.mouse.value.set(x, y);
+    }
+
+    // ✅ Mouse Events
     renderer.domElement.addEventListener("mousemove", (e) => {
         updateMousePosition(e.clientX, e.clientY);
     });
-    
+
     renderer.domElement.addEventListener("mouseleave", () => {
-        mouse.set(0, 0);
+        simMaterial.uniforms.mouse.value.set(-10, -10);
     });
-    
-    // 🟢 Touch events for mobile support
+
+    // ✅ Touch Support for Mobile
     renderer.domElement.addEventListener("touchstart", (e) => {
         e.preventDefault();
         if (e.touches.length > 0) {
             updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
         }
     });
-    
+
     renderer.domElement.addEventListener("touchmove", (e) => {
         e.preventDefault();
         if (e.touches.length > 0) {
             updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
         }
     });
-    
-    renderer.domElement.addEventListener("touchend", () => {
-        mouse.set(0, 0);
-    });
-    
-    // 🟢 Function to update the mouse position for both mouse & touch
-    function updateMousePosition(clientX, clientY) {
-        const rect = renderer.domElement.getBoundingClientRect();
-        const dpr = Math.min(window.devicePixelRatio, 2);
-    
-        let mouseX = (clientX - rect.left) / rect.width;
-        let mouseY = 1.0 - (clientY - rect.top) / rect.height; // Flip Y axis
-    
-        mouse.x = mouseX * (window.innerWidth * dpr);
-        mouse.y = mouseY * (window.innerHeight * dpr);
-    }
-    
 
-    
+    renderer.domElement.addEventListener("touchend", () => {
+        simMaterial.uniforms.mouse.value.set(-10, -10);
+    });
+
+    // ✅ Handle Window Resize
+    window.addEventListener("resize", () => {
+        width = window.innerWidth * dpr;
+        height = window.innerHeight * dpr;
+
+        renderer.setSize(width / 2, height / 2, false);
+        rtA.setSize(width / 2, height / 2);
+        rtB.setSize(width / 2, height / 2);
+
+        simMaterial.uniforms.resolution.value.set(width / 2, height / 2);
+        frame = 0;
+    });
+
+    // ✅ Animation Loop
     const animate = () => {
         simMaterial.uniforms.frame.value = frame++;
         simMaterial.uniforms.time.value = performance.now() / 1000;
         simMaterial.uniforms.textureA.value = rtA.texture;
-    
+
         renderer.setRenderTarget(rtB);
         renderer.render(simScene, camera);
-    
+
         renderMaterial.uniforms.textureA.value = rtB.texture;
         renderMaterial.uniforms.time.value = performance.now() / 1000;
-    
+
         renderer.setRenderTarget(null);
         renderer.render(scene, camera);
-    
-        const temp = rtA;
-        rtA = rtB;
-        rtB = temp;
-    
+
+        [rtA, rtB] = [rtB, rtA];
+
         requestAnimationFrame(animate);
     };
+
     animate();
-    
-    
 });
