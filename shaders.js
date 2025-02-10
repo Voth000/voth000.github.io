@@ -28,7 +28,7 @@ vec4 data = texture2D(textureA, uv);
 float pressure = data.x;
 float pVel = data.y;
 
-vec2 texelSize = 6.0 / resolution;
+vec2 texelSize = 4.0 / resolution;
 float p_right = texture2D(textureA, uv + vec2(texelSize.x, 0.0)).x;
     float p_left = texture2D(textureA, uv + vec2(-texelSize.x, 0.0)).x;
     float p_up = texture2D(textureA, uv + vec2(0.0, texelSize.y)).x;
