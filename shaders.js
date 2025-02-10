@@ -30,7 +30,8 @@ float pressure = data.x;
 float pVel = data.y;
 
 
-
+    float texelSizeFactor = resolution.x > 500.0 ? 5.0 : 2.0; 
+    vec2 texelSize = texelSizeFactor / resolution; 
     float p_right = texture2D(textureA, uv + vec2(texelSize.x, 0.0)).x;
     float p_left  = texture2D(textureA, uv + vec2(-texelSize.x, 0.0)).x;
     float p_up    = texture2D(textureA, uv + vec2(0.0, texelSize.y)).x;
@@ -84,6 +85,7 @@ if(mouse.x > 0.0) {
 
     
    gl_FragColor = vec4(pressure, pVel, (p_right - p_left) / 2.0, (p_up - p_down) / 2.0);
+   
 
 }
 `;

@@ -43,8 +43,12 @@ document.addEventListener("DOMContentLoaded", async () => {
     let rtA = new THREE.WebGLRenderTarget(width / 2, height / 2, options);
     let rtB = new THREE.WebGLRenderTarget(width / 2, height / 2, options);
 
-    function getTexelSize() {
-        return window.innerWidth < 500 ? 1.0 : 5.0;
+    function updateTexelSize() {
+        const screenWidth = window.innerWidth;
+        const texelFactor = screenWidth < 500 ? 1.0 : 5.0; // Adjust texelSize based on screen size
+    
+        // Set texelSize uniform
+        simMaterial.uniforms.texelSize.value.set(texelFactor / width, texelFactor / height);
     }
 
     const simMaterial = new THREE.ShaderMaterial({
@@ -54,7 +58,8 @@ document.addEventListener("DOMContentLoaded", async () => {
             resolution: { value: new THREE.Vector2(width / 2, height / 2) },
             time: { value: 0 },
             frame: { value: 0 },
-            texelSize: { value: new THREE.Vector2(getTexelSize() / width, getTexelSize() / height) }, // ✅ Dynamic texelSize
+            texelSize: { value: new THREE.Vector2(1.0 / width, 1.0 / height) }, // Initialize
+
         },
         vertexShader: simulationVertexShader,
         fragmentShader: simulationFragmentShader,
@@ -103,38 +108,33 @@ document.addEventListener("DOMContentLoaded", async () => {
         simMaterial.uniforms.mouse.value.set(-10, -10);
     });
 
-    // ✅ Allow scrolling if the user is not touching the canvas
-    renderer.domElement.addEventListener("touchstart", (e) => {
-        if (e.target === renderer.domElement) {
-            e.preventDefault();
-            if (e.touches.length > 0) {
-                updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
-            }
+   // ✅ Allow scrolling if the user is not touching the canvas
+renderer.domElement.addEventListener("touchstart", (e) => {
+    if (e.target === renderer.domElement) {
+        e.preventDefault();
+        if (e.touches.length > 0) {
+            updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
         }
-    }, { passive: false });
-
-    renderer.domElement.addEventListener("touchmove", (e) => {
-        if (e.target === renderer.domElement) {
-            e.preventDefault();
-            if (e.touches.length > 0) {
-                updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
-            }
-        }
-    }, { passive: false });
-
-    renderer.domElement.addEventListener("touchend", () => {
-        simMaterial.uniforms.mouse.value.set(-10, -10);
-    });
-
-    // ✅ Define updateTexelSize properly
-    function updateTexelSize() {
-        const texel = getTexelSize();
-        simMaterial.uniforms.texelSize.value.set(texel / width, texel / height);
     }
+}, { passive: false });
+
+renderer.domElement.addEventListener("touchmove", (e) => {
+    if (e.target === renderer.domElement) {
+        e.preventDefault();
+        if (e.touches.length > 0) {
+            updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+        }
+    }
+}, { passive: false });
+
+renderer.domElement.addEventListener("touchend", () => {
+    simMaterial.uniforms.mouse.value.set(-10, -10);
+});
+
+updateTexelSize();
 
     // ✅ Handle Window Resize
     window.addEventListener("resize", () => {
-        const dpr = Math.min(window.devicePixelRatio, 2);
         width = window.innerWidth * dpr;
         height = window.innerHeight * dpr;
 
@@ -143,8 +143,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         rtB.setSize(width / 2, height / 2);
 
         simMaterial.uniforms.resolution.value.set(width / 2, height / 2);
-        updateTexelSize();
-
         frame = 0;
     });
 
@@ -168,6 +166,5 @@ document.addEventListener("DOMContentLoaded", async () => {
         requestAnimationFrame(animate);
     };
 
-    updateTexelSize(); // ✅ Initialize texelSize correctly
     animate();
 });
