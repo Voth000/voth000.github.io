@@ -108,28 +108,26 @@ document.addEventListener("DOMContentLoaded", async () => {
         simMaterial.uniforms.mouse.value.set(-10, -10);
     });
 
-   // ✅ Allow scrolling if the user is not touching the canvas
-renderer.domElement.addEventListener("touchstart", (e) => {
-    if (e.target === renderer.domElement) {
-        e.preventDefault();
-        if (e.touches.length > 0) {
-            updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+    document.addEventListener("touchstart", (e) => {
+        if (e.target === renderer.domElement) {
+            if (e.touches.length > 0) {
+                updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+            }
         }
-    }
-}, { passive: false });
-
-renderer.domElement.addEventListener("touchmove", (e) => {
-    if (e.target === renderer.domElement) {
-        e.preventDefault();
-        if (e.touches.length > 0) {
-            updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+    }, { passive: true }); // ✅ Allow scrolling
+    
+    document.addEventListener("touchmove", (e) => {
+        if (e.target === renderer.domElement) {
+            if (e.touches.length > 0) {
+                updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+            }
         }
-    }
-}, { passive: false });
-
-renderer.domElement.addEventListener("touchend", () => {
-    simMaterial.uniforms.mouse.value.set(-10, -10);
-});
+    }, { passive: true }); // ✅ Never block scrolling
+    
+    document.addEventListener("touchend", () => {
+        simMaterial.uniforms.mouse.value.set(-10, -10);
+    });
+    
 
 updateTexelSize();
 
