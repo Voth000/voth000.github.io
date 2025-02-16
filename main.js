@@ -110,6 +110,9 @@ function applyH1GlitchEffect() {
       duration: 2,
       ease: "power4.in"
     });
+
+
+    
     // Hover Events
     gridContainer.addEventListener('mouseenter', () => {
       // Trigger the exit animation on hover
@@ -374,18 +377,44 @@ document.addEventListener("DOMContentLoaded", () => {
 });
 
 
-
-boDiv.addEventListener('mouseenter', () => {
-  revealGrid();
-});
-
-
-// Reveal grid items with visibility change
-function revealGrid() {
-  gridItems.forEach((item, index) => {
-    setTimeout(() => {
-      item.classList.add('visible'); // Add visible class to make the item appear
-    }, index * 450); // Staggered delay for smoother effect
-  });
+function handleGridVisibility() {
+  if (window.innerWidth <= 1024) {
+    // Always show grid items for small screens
+    gridItems.forEach((item) => {
+      item.classList.add("visible");
+    });
+  } else {
+    // Ensure grid starts hidden for large screens
+    gridItems.forEach((item) => {
+      item.classList.remove("visible");
+    });
+  }
 }
 
+// Attach hover event only for large screens
+boDiv.addEventListener("mouseenter", () => {
+  if (window.innerWidth > 1024) {
+    revealGrid();
+  }
+});
+
+// Run on page load
+handleGridVisibility();
+
+// Recheck when window is resized
+window.addEventListener("resize", handleGridVisibility);
+
+
+function revealGrid() {
+  gridItems.forEach((item, index) => {
+    if (window.innerWidth <= 1024) {
+      // Instantly make items visible on small screens
+      item.classList.add("visible");
+    } else {
+      // Staggered reveal animation on larger screens
+      setTimeout(() => {
+        item.classList.add("visible");
+      }, index * 450);
+    }
+  });
+}

@@ -71,6 +71,9 @@ header:hover {
 
 
 @media (max-width: 1024px) {
+    button {
+        font-size: 12px;
+    }
     div#next h1 {
         font-size: 2em;
     }
@@ -113,15 +116,19 @@ header:hover {
         }
         #t2 .cap1 {
             font-size: 12px;
+            max-width: 36%;
         }
         #t3 .cap1 {
             font-size: 12px;
+            max-width: 36%;
         }
         #t1 .cap1 {
             font-size: 12px;
+            max-width: 36%;
         }
         #t4 .cap1 {
             font-size: 12px;
+            max-width: 36%;
         }
 }
 
@@ -160,6 +167,18 @@ header:hover {
         }
         .bio span {
             font-size: 5em;
+        }
+        #t2 .cap1 {
+            max-width: 16%;
+        }
+        #t3 .cap1 {
+            max-width: 16%;
+        }
+        #t1 .cap1 {
+            max-width: 16%;
+        }
+        #t4 .cap1 {
+            max-width: 16%;
         }
 }
 
@@ -384,10 +403,10 @@ border: 0.25px solid ;
    
     grid-template-columns: 1fr 1fr 1fr 1fr;
     grid-template-areas:
-        "d . . ."
+        "d . a c"
         ". b . . "
-        " . . c ."
-        " . . . a";
+        " . . . ."
+        " . . . .";
 }
 
 #ei{
@@ -641,7 +660,7 @@ canvas {
     font-family: 'Unbounded', monospace;
     font-weight: 200;
     /* font-size: 0.75rem; */
-    max-width: 16%;
+   
 
 }
 
@@ -659,7 +678,6 @@ canvas {
     font-family: 'Unbounded', monospace;
     font-weight: 200;
     /* font-size: 0.75rem; */
-    max-width: 16%;
 
 }
 
@@ -677,7 +695,6 @@ canvas {
     font-family: 'Unbounded', monospace;
     font-weight: 200;
     /* font-size: 0.75rem; */
-    max-width: 16%;
 
 }
 
@@ -694,7 +711,6 @@ canvas {
     font-family: 'Unbounded', monospace;
     font-weight: 200;
     /* font-size: 0.75rem; */
-    max-width: 16%;
 
 }
 

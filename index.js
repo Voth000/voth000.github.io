@@ -168,16 +168,16 @@ class SceneManager {
         this.updateCirclePoints();
 
         this.circle = new THREE.LineLoop(geometry, material);
-        this.circle.rotation.x = Math.PI / -2;
+        this.circle.rotation.x = Math.PI / -2.25;
         this.circle.rotation.y = Math.PI / -8;
-        this.circle.scale.set(0.5, 0.5, 0.5);
+        this.circle.scale.set(0.4, 0.4, 0.4);
         this.circle.position.y = 1;
         this.scene.add(this.circle);
 
         this.circle1 = new THREE.LineLoop(geometry, material);
-        this.circle1.rotation.x = Math.PI / -2;
+        this.circle1.rotation.x = Math.PI / -2.25;
         this.circle1.rotation.y = Math.PI / -8;
-        this.circle1.scale.set(0.5, 0.5, 0.5);
+        this.circle1.scale.set(0.4, 0.4, 0.4);
         this.circle1.position.y = 1;
         this.scene.add(this.circle1);
     }
@@ -365,6 +365,31 @@ class SceneManager {
         }
     }
 
+
+ adjustRootScale() {
+        if (this.root1) {
+            const isSmallScreen = window.innerWidth < 500;
+            this.root1.scale.set(isSmallScreen ? 2 : 3, isSmallScreen ? 2 : 3, isSmallScreen ? 2 : 3);
+            this.root1.position.set(
+                isSmallScreen ? 0 : -0.3, 
+                isSmallScreen ? -2 : -3, 
+                0
+            );
+        }
+    }
+
+    adjustCircleScale() {
+        if (this.circle) {
+            const isSmallScreen = window.innerWidth < 500;
+            this.circle.scale.set(isSmallScreen ? 0.8 : 0.4, isSmallScreen ? 0.8 : 0.4, isSmallScreen ? 0.8 : 0.4);
+            
+        }
+    }
+
+
+
+
+
     setupEventListeners() {
         window.addEventListener('resize', this.handleResize.bind(this));
         this.positionButtons();
@@ -387,37 +412,11 @@ class SceneManager {
         this.positionButtons();
         this.positionArrow();
         this.adjustRootScale();
+        this.adjustCircleScale();
     }
 
-    adjustRootScale() {
-        if (this.root1) {
-            const isSmallScreen = window.innerWidth < 500;
-            this.root1.scale.set(isSmallScreen ? 2 : 4, isSmallScreen ? 2 : 4, isSmallScreen ? 2 : 4);
-            this.root1.position.set(
-                isSmallScreen ? 0 : -0.5, 
-                isSmallScreen ? 2 : -2.5, 
-                0
-            );
-        }
-    }
+   
 
-animate() {
-        requestAnimationFrame(() => this.animate());
-       
-    const now = Date.now();
-        if (!this.isHovering && now - this.lastAutoSwitchTime > 8000) {
-            this.autoSwitchButton();
-            this.lastAutoSwitchTime = now;
-        }
-
-
-        this.circle1.rotation.z += 0.008;
-        this.updateCirclePoints();
-        this.positionButtons();
-        this.positionArrow();
-        this.controls.update();
-        this.renderer.render(this.scene, this.camera);
-    }
 
     positionButtons() {
         const buttons = document.querySelectorAll('.main1');
@@ -461,7 +460,26 @@ animate() {
         }
     }
 
-    
+
+animate() {
+        requestAnimationFrame(() => this.animate());
+       
+    const now = Date.now();
+        if (!this.isHovering && now - this.lastAutoSwitchTime > 8000) {
+            this.autoSwitchButton();
+            this.lastAutoSwitchTime = now;
+        }
+
+
+        this.circle1.rotation.z += 0.008;
+        this.updateCirclePoints();
+        this.positionButtons();
+        this.positionArrow();
+        this.controls.update();
+        this.renderer.render(this.scene, this.camera);
+        this.adjustRootScale();
+        this.adjustCircleScale();
+    }    
 
 
 }
