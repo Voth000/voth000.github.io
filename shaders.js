@@ -30,7 +30,7 @@ float pressure = data.x;
 float pVel = data.y;
 
 
-    float texelSizeFactor = resolution.x > 500.0 ? 4.0 : 2.0; 
+    float texelSizeFactor = resolution.x > 500.0 ? 4.0 : 6.0; 
     vec2 texelSize = texelSizeFactor / resolution; 
     float p_right = texture2D(textureA, uv + vec2(texelSize.x, 0.0)).x;
     float p_left  = texture2D(textureA, uv + vec2(-texelSize.x, 0.0)).x;
@@ -103,27 +103,36 @@ uniform sampler2D textureA;
 varying vec2 vUv;
 uniform float time;
 
+// Define the custom ripple colors
+const vec3 customGreen = vec3(0.6, 1, 0.2);  // Adjust green shade
+const vec3 customBlue  = vec3(0.7, 1, 0.2);   // Adjust blue shade
+
+
 void main() {
     vec4 data = texture2D(textureA, vUv);
     vec3 normal = normalize(vec3(-data.z, 0.2, -data.w));
 
-    float timeOffset = 0.2 * sin(time * 3.0);
+    float timeOffset = 0.02 * sin(time * 3.0);
 
-    // Adjust RGB offsets with enhanced brightness
-    vec2 offsetG = 0.02 * normal.xz - timeOffset * vec2(0.005, 0.007);
-    vec2 offsetB = 0.01 * normal.xz + timeOffset * vec2(-0.007, 0.005);
+    // Adjust ripple offsets
+    vec2 offsetG = 0.024 * normal.xz - timeOffset * vec2(0.007, 0.003);
+    vec2 offsetB = 0.022 * normal.xz + timeOffset * vec2(-0.003, 0.007);
 
-    // Sample texture at offset positions
+    // Sample colors from texture with slight shifts
     vec4 colG = texture2D(textureA, vUv + offsetG);
     vec4 colB = texture2D(textureA, vUv + offsetB);
 
-    // Boost brightness and apply gamma correction
-    vec3 color = vec3(0.0, 1.2 * pow(colG.g, 1.0), 1.2 * pow(colB.b, 1.0));
+    // Compute ripple intensity
+    float rippleStrengthG = colG.g;
+    float rippleStrengthB = colB.b;
 
-    // Ensure transparency is smooth
-    float alpha = max(color.g, color.b); 
+    // Apply custom colors
+    vec3 rippleColor = (rippleStrengthG * customGreen) + (rippleStrengthB * customBlue);
 
-    gl_FragColor = vec4(color, alpha);
+    // Set transparency: more transparent in calm areas
+    float alpha = max(rippleStrengthG, rippleStrengthB) * 0.9;
+
+    gl_FragColor = vec4(rippleColor, alpha);
 }
 
 

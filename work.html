@@ -6,7 +6,21 @@
     <title>Voth000's Works</title>
     <style>
         @import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@200..900&display=swap');
-
+        @font-face {
+            font-family: 'p1';
+            src: url("./Font/otf/Basteleur-Moonlight.otf") format('truetype');
+        }
+        
+        
+        @font-face {
+            font-family: 'h2';
+            src: url("./Font/otf/Ouvrieres-rassasiees.otf") format('truetype');
+          }
+        
+        @font-face {
+            font-family: 'h1';
+            src: url("./Font/otf/Ouvrieres-rassasiees.otf") format('truetype');
+          }
 
         :root {
             --radius: 0px;
@@ -31,7 +45,7 @@
        
         --shadow:  inset 1px 0px 4px 2px rgb(206 206 206 / 75%), 1px -4px 1px 1px rgb(255 255 255 / 8%);
         --bgtrans: linear-gradient(180deg, rgba(247, 247, 247, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%);
-        --test:linear-gradient(rgba(255, 255, 255, 0.831) 5%, 20%, rgb(105 105 105) 65%);
+        --test:linear-gradient(rgba(255, 255, 255, 0.831) 5%, 20%, rgb(139 139 139 / 66%) 65%);
         --test2: linear-gradient(rgba(255, 255, 255, 0.052) 5%, 90%, rgba(135, 135, 135, 0.808) 10%);
 
         
@@ -97,7 +111,7 @@
         
         a {
            
-            font-family: 'Unbounded', monospace;
+            font-family: 'p1', monospace;
             font-weight: 200;
         
             font-size: var(--t1);
@@ -352,6 +366,7 @@
         }
         
           b {
+            font-family: 'p1';
             font-weight: 400;
           }
         
@@ -368,9 +383,13 @@
             float: left;
            
           }
+
+          .name {
+            font-size: 14px;
+          }
         
           #tag {
-            font-size: 16px;
+            font-size: 14px;
             display: flex
         ;
             padding: 4px;
