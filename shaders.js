@@ -30,7 +30,7 @@ float pressure = data.x;
 float pVel = data.y;
 
 
-    float texelSizeFactor = resolution.x > 500.0 ? 3.0 : 6.0; 
+    float texelSizeFactor = resolution.x > 500.0 ? 4.0 : 2.0; 
     vec2 texelSize = texelSizeFactor / resolution; 
     float p_right = texture2D(textureA, uv + vec2(texelSize.x, 0.0)).x;
     float p_left  = texture2D(textureA, uv + vec2(-texelSize.x, 0.0)).x;

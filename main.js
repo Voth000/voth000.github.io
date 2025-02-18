@@ -423,24 +423,28 @@ function revealGrid() {
 
 const textContainer = document.getElementById("transbot");
 
-// Detect screen size and set initial text
+// Detect screen size
 const isSmallScreen = window.innerWidth < 1000;
-textContainer.innerText = isSmallScreen ? "Tap here" : "Scroll Down";
+const initialText = isSmallScreen ? "Tap here" : "Scroll Down";
 
-// If the screen is small, stop further JavaScript effects
+// Set text immediately to ensure visibility
+textContainer.textContent = initialText;
+
+// If it's a small screen, apply only CSS styles (skip JavaScript effects)
 if (isSmallScreen) {
-    textContainer.classList.add("no-animation"); // Add a class for CSS styling
+    textContainer.classList.add("no-animation");
 } else {
-    applyTextEffects(); // Run JS animations only for large screens
+    applyTextEffects();
 }
 
 // Function to apply animated text effect (only for large screens)
 function applyTextEffects() {
-    const text = textContainer.innerText;
-    textContainer.innerHTML = ""; 
+    const text = textContainer.textContent; // Use textContent for better cross-browser support
+    textContainer.innerHTML = ""; // Clear existing text
+
     text.split("").forEach(letter => {
         let span = document.createElement("span");
-        span.innerText = letter;
+        span.textContent = letter; // Use textContent instead of innerText
         span.style.display = "inline-block"; 
         span.style.webkitTextFillColor = "rgba(0, 0, 0, 0.02)"; 
         span.style.webkitTextStroke = "1px rgba(122, 122, 122, 0.01)"; 
@@ -496,10 +500,10 @@ function applyTextEffects() {
 
 // Function to handle scroll action when user clicks
 function handleScrollDown() {
-  const nextDiv = document.querySelector('#bo');
-  if (nextDiv) {
-    nextDiv.scrollIntoView({ behavior: 'smooth' });
-  }
+    const nextDiv = document.querySelector('#bo');
+    if (nextDiv) {
+        nextDiv.scrollIntoView({ behavior: 'smooth' });
+    }
 }
 
 // Add event listener for click
