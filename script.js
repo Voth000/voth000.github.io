@@ -102,26 +102,26 @@ document.addEventListener("DOMContentLoaded", async () => {
         simMaterial.uniforms.mouse.value.set(-10, -10);
     });
 
-    document.addEventListener("touchstart", (e) => {
-        if (e.target === renderer.domElement) {
-            e.preventDefault(); // ✅ Prevent scrolling only if touching canvas
+    // ✅ Touch Support for Mobile
+    renderer.domElement.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        if (e.touches.length > 0) {
+            updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
         }
-    }, { passive: false });
-    
-    document.addEventListener("touchmove", (e) => {
-        if (e.target === renderer.domElement) {
-            if (e.touches.length > 0) {
-                updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
-            }
+    });
+
+    renderer.domElement.addEventListener("touchmove", (e) => {
+        e.preventDefault();
+        if (e.touches.length > 0) {
+            updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
         }
-    }, { passive: true }); // ✅ Allow scrolling
-    
-    
-    document.addEventListener("touchend", () => {
-        simMaterial.uniforms.mouse.value.set(-10, -10);
     });
     
 
+    renderer.domElement.addEventListener("touchend", () => {
+ 
+        simMaterial.uniforms.mouse.value.set(-10, -10);
+    });
 
     // ✅ Handle Window Resize
     window.addEventListener("resize", () => {
