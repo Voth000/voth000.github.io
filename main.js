@@ -421,30 +421,22 @@ function revealGrid() {
 
 
 
-const textContainer = document.getElementById("transbot");
 
-// Detect screen size
-const isSmallScreen = window.innerWidth < 1000;
-const initialText = isSmallScreen ? "Tap here" : "Scroll Down";
 
-// Set text immediately to ensure visibility
-textContainer.textContent = initialText;
+const textContainer = document.getElementById("scroll-down");
 
-// If it's a small screen, apply only CSS styles (skip JavaScript effects)
-if (isSmallScreen) {
-    textContainer.classList.add("no-animation");
-} else {
+// Only apply animations if on a large screen
+if (window.innerWidth >= 1000) {
     applyTextEffects();
 }
 
-// Function to apply animated text effect (only for large screens)
 function applyTextEffects() {
-    const text = textContainer.textContent; // Use textContent for better cross-browser support
+    const text = textContainer.textContent;
     textContainer.innerHTML = ""; // Clear existing text
 
     text.split("").forEach(letter => {
         let span = document.createElement("span");
-        span.textContent = letter; // Use textContent instead of innerText
+        span.textContent = letter;
         span.style.display = "inline-block"; 
         span.style.webkitTextFillColor = "rgba(0, 0, 0, 0.02)"; 
         span.style.webkitTextStroke = "1px rgba(122, 122, 122, 0.01)"; 
@@ -453,7 +445,7 @@ function applyTextEffects() {
         textContainer.appendChild(span);
     });
 
-    const spans = document.querySelectorAll("#transbot span");
+    const spans = document.querySelectorAll("#scroll-down span");
 
     function handleMouseMove(e) {
         const mouseX = e.clientX;
@@ -490,7 +482,7 @@ function applyTextEffects() {
             span.style.textShadow = shadowIntensity > 0.1
                 ? `rgba(123, 123, 123, ${shadowIntensity}) -1px -1px ${6 * shadowIntensity}px,
                    rgba(110, 110, 110, ${shadowIntensity}) -1px -1px ${12 * shadowIntensity}px,
-                   rgba(122, 122, 122, ${shadowIntensity}) -1px -1px ${20 * shadowIntensity}px`
+                   rgba(122, 122, 122, ${shadowIntensity}) -1px -1px ${30 * shadowIntensity}px`
                 : "none";
         });
     }
@@ -507,4 +499,6 @@ function handleScrollDown() {
 }
 
 // Add event listener for click
-textContainer.addEventListener("click", handleScrollDown);
+document.getElementById("tap-here").addEventListener("click", handleScrollDown);
+document.getElementById("scroll-down").addEventListener("click", handleScrollDown);
+
