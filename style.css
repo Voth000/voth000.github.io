@@ -628,10 +628,10 @@ background-size: cover;
   }
 
  *::-webkit-scrollbar-thumb {
-    background-color: #cfff77bb;
+   /*  background-color: #cfff77bb; */
     border-radius: 0px;
     border: 3px dashed #ffffff;
-    
+    background-color: #ffd1dbee
 
   }
 
@@ -1287,6 +1287,7 @@ background-blend-mode: darken, luminosity;
 .push:hover {
     text-shadow: rgb(174, 255, 0) -1px -1px 8px, rgb(222, 253, 148) -1px -1px 14px, rgb(32, 32, 32) -1px -1px 30px;
     color: rgb(255 135 237 / 84%);
+
     filter: brightness(1.2) drop-shadow(1px 16px 20px rgba(200, 255, 125, 0.907));
    transform:  translateY(10px);
    box-shadow: rgb(255 255 255 / 67%) 4px 4px 13.6px 1px, rgba(246, 245, 245, 0.67) 2px 3px 11.5px 4px;
