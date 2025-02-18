@@ -421,103 +421,86 @@ function revealGrid() {
 
 
 
-
-// Function to detect if the device supports touch events (for mobile/tablets)
-function isTouchDevice() {
-  return 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-}
-
 const textContainer = document.getElementById("transbot");
-if (isTouchDevice()) {
-  textContainer.innerText = "Touch here"; 
+
+// Detect screen size and set initial text
+const isSmallScreen = window.innerWidth < 1000;
+textContainer.innerText = isSmallScreen ? "Tap here" : "Scroll Down";
+
+// If the screen is small, stop further JavaScript effects
+if (isSmallScreen) {
+    textContainer.classList.add("no-animation"); // Add a class for CSS styling
 } else {
-  textContainer.innerText = "Scroll Down"; 
+    applyTextEffects(); // Run JS animations only for large screens
 }
 
-const text = textContainer.innerText;
-textContainer.innerHTML = ""; 
-text.split("").forEach(letter => {
-    let span = document.createElement("span");
-    span.innerText = letter;
-    span.style.display = "inline-block"; // Ensure correct spacing between letters
-    span.style.webkitTextFillColor = "rgba(0, 0, 0, 0.02)"; // Set text color
-    span.style.webkitTextStroke = "1px rgba(122, 122, 122, 0.01)"; // Initial stroke (outline)
-    span.style.transition = "all 0.1s ease-out"; // Smooth transition on interactions
-    span.style.textShadow = "none"; // No shadow initially
-    textContainer.appendChild(span);
-});
-
-// Select all spans inside the text container
-const spans = document.querySelectorAll("#transbot span");
-
-// Function to handle mouse or touch movement
-function handleMouseTouchMove(e) {
-    // Get mouse/touch position based on device
-    const mouseX = e.touches ? e.touches[0].clientX : e.clientX;
-    const mouseY = e.touches ? e.touches[0].clientY : e.clientY;
-    
-    const screenWidth = window.innerWidth;
-    const screenHeight = window.innerHeight;
-    const middleScreenX = screenWidth / 2;
-    const middleScreenY = screenHeight / 2;
-
-    spans.forEach((span, index) => {
-        const letterRect = span.getBoundingClientRect();
-        const letterCenterX = letterRect.left + letterRect.width / 2;
-        const letterCenterY = letterRect.top + letterRect.height / 2;
-
-        // Calculate distance from mouse or touch position
-        const distanceFromMouseX = Math.abs(letterCenterX - mouseX);
-        const distanceFromMouseY = Math.abs(letterCenterY - mouseY);
-        const distanceFromMouse = Math.sqrt(distanceFromMouseX ** 2 + distanceFromMouseY ** 2);
-
-        // Stroke thickness based on distance from mouse (horizontal)
-        const strokeThickness = Math.floor(((middleScreenX - distanceFromMouseX) / middleScreenX) * 8) + 1;
-        const finalStroke = Math.min(9, Math.max(1, strokeThickness));
-        span.style.webkitTextStrokeWidth = `${finalStroke}px`;
-
-        // Font weight based on vertical distance from mouse
-        const weight = Math.floor(((middleScreenY - distanceFromMouseY) / middleScreenY) * 400) + 100;
-        let offset = (index / spans.length) * 300;
-        span.style.fontVariationSettings = `'wght' ${Math.min(400, Math.max(100, weight + offset))}`;
-
-        // Scale text dynamically based on stroke thickness
-        const scaleSize = 1 + (finalStroke / 30); // Adjust scale based on stroke
-        span.style.transform = `scale(${scaleSize})`;
-
-     
-        const spacing = finalStroke * 1; // Adjust spacing multiplier
-        span.style.marginRight = `${spacing}px`; // Increase spacing when stroke is larger
-
-        // Dynamic text-shadow effect based on distance from mouse
-        const shadowIntensity = Math.max(0, (middleScreenX - distanceFromMouseX) / middleScreenX);
-        if (shadowIntensity > 0.1) {
-            span.style.textShadow = `
-                rgba(123, 123, 123, ${shadowIntensity}) -1px -1px ${6 * shadowIntensity}px,
-                rgba(110, 110, 110, ${shadowIntensity}) -1px -1px ${12 * shadowIntensity}px,
-                rgba(122, 122, 122, ${shadowIntensity}) -1px -1px ${20 * shadowIntensity}px
-            `;
-        } else {
-            span.style.textShadow = "none"; // Remove shadow if too far
-        }
+// Function to apply animated text effect (only for large screens)
+function applyTextEffects() {
+    const text = textContainer.innerText;
+    textContainer.innerHTML = ""; 
+    text.split("").forEach(letter => {
+        let span = document.createElement("span");
+        span.innerText = letter;
+        span.style.display = "inline-block"; 
+        span.style.webkitTextFillColor = "rgba(0, 0, 0, 0.02)"; 
+        span.style.webkitTextStroke = "1px rgba(122, 122, 122, 0.01)"; 
+        span.style.transition = "all 0.1s ease-out"; 
+        span.style.textShadow = "none"; 
+        textContainer.appendChild(span);
     });
+
+    const spans = document.querySelectorAll("#transbot span");
+
+    function handleMouseMove(e) {
+        const mouseX = e.clientX;
+        const mouseY = e.clientY;
+        
+        const screenWidth = window.innerWidth;
+        const screenHeight = window.innerHeight;
+        const middleScreenX = screenWidth / 2;
+        const middleScreenY = screenHeight / 2;
+
+        spans.forEach((span, index) => {
+            const letterRect = span.getBoundingClientRect();
+            const letterCenterX = letterRect.left + letterRect.width / 2;
+            const letterCenterY = letterRect.top + letterRect.height / 2;
+
+            const distanceFromMouseX = Math.abs(letterCenterX - mouseX);
+            const distanceFromMouseY = Math.abs(letterCenterY - mouseY);
+
+            const strokeThickness = Math.floor(((middleScreenX - distanceFromMouseX) / middleScreenX) * 8) + 1;
+            const finalStroke = Math.min(9, Math.max(1, strokeThickness));
+            span.style.webkitTextStrokeWidth = `${finalStroke}px`;
+
+            const weight = Math.floor(((middleScreenY - distanceFromMouseY) / middleScreenY) * 400) + 100;
+            let offset = (index / spans.length) * 300;
+            span.style.fontVariationSettings = `'wght' ${Math.min(400, Math.max(100, weight + offset))}`;
+
+            const scaleSize = 1 + (finalStroke / 30);
+            span.style.transform = `scale(${scaleSize})`;
+
+            const spacing = finalStroke * 1;
+            span.style.marginRight = `${spacing}px`;
+
+            const shadowIntensity = Math.max(0, (middleScreenX - distanceFromMouseX) / middleScreenX);
+            span.style.textShadow = shadowIntensity > 0.1
+                ? `rgba(123, 123, 123, ${shadowIntensity}) -1px -1px ${6 * shadowIntensity}px,
+                   rgba(110, 110, 110, ${shadowIntensity}) -1px -1px ${12 * shadowIntensity}px,
+                   rgba(122, 122, 122, ${shadowIntensity}) -1px -1px ${20 * shadowIntensity}px`
+                : "none";
+        });
+    }
+
+    document.addEventListener("mousemove", handleMouseMove);
 }
 
-// Add event listeners for both mousemove and touchmove
-document.addEventListener("mousemove", handleMouseTouchMove);
-document.addEventListener("touchmove", handleMouseTouchMove);
-
-
-// Function to handle scroll action when user clicks/swipes
-function handleScrollDown(e) {
-  const nextDiv = document.querySelector('#bo'); // Select next section div (you can use any class or ID here)
+// Function to handle scroll action when user clicks
+function handleScrollDown() {
+  const nextDiv = document.querySelector('#bo');
   if (nextDiv) {
-    nextDiv.scrollIntoView({ behavior: 'smooth' }); // Smooth scroll to next section
+    nextDiv.scrollIntoView({ behavior: 'smooth' });
   }
 }
 
-// Add event listener for click or touch to trigger scroll
-textContainer.addEventListener("click", handleScrollDown); // For desktop devices (click)
-textContainer.addEventListener("touchstart", handleScrollDown); // For mobile devices (touch)
-
-// You can replace '.next-section' with your target div's class or ID that you want to scroll to.
+// Add event listener for click
+textContainer.addEventListener("click", handleScrollDown);
