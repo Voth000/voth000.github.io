@@ -104,8 +104,8 @@ varying vec2 vUv;
 uniform float time;
 
 // Define the custom ripple colors
-const vec3 customGreen = vec3(0.6, 1, 0.2);  // Adjust green shade
-const vec3 customBlue  = vec3(0.7, 1, 0.2);   // Adjust blue shade
+const vec3 customGreen = vec3(0.7, 1, 0.3);  // Adjust green shade
+const vec3 customBlue  = vec3(1, 0.5, 0.6);   // Adjust blue shade
 
 
 void main() {

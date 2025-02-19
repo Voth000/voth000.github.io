@@ -103,14 +103,7 @@ function applyH1GlitchEffect() {
       });
 
 
-       // Create the exit animation timeline
-    const exitTimeline = gsap.timeline({ paused: true });
-    exitTimeline.to(h1, {
-      opacity: 0,
-      duration: 2,
-      ease: "power4.in"
-    });
-
+     
 
     
     // Hover Events
@@ -284,9 +277,6 @@ revealTimeline.to(container1,{
       next.addEventListener('mouseleave', () => {
          //container1.style.filter = "brightness(1.8) grayscale(0.8) opacity(0.6) drop-shadow(4px 4px 6px rgba(255, 255, 255, 0.745))";
           container1.style.filter = "brightness(1.8) grayscale(0.8) opacity(0.6) drop-shadow(4px 4px 6px rgba(255, 255, 255, 0.745))";
-
-          //container2.style.filter = "opacity(0.6) brightness(1.5)";
-          //container2.style.filter = "opacity(0.9) brightness(1.3)";
           container2.style.filter = "opacity(1) brightness(1.1)";
 
       });
@@ -438,7 +428,7 @@ function applyTextEffects() {
         let span = document.createElement("span");
         span.textContent = letter;
         span.style.display = "inline-block"; 
-        span.style.webkitTextFillColor = "rgba(0, 0, 0, 0.02)"; 
+        span.style.webkitTextFillColor = "rgba(0, 0, 0, 0.03)"; 
         span.style.webkitTextStroke = "1px rgba(122, 122, 122, 0.01)"; 
         span.style.transition = "all 0.1s ease-out"; 
         span.style.textShadow = "none"; 

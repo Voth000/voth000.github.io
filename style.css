@@ -76,6 +76,11 @@ header:hover {
 
 
 @media (max-width: 1024px) {
+    #transbot {
+        height: 20%;
+     }
+     
+    
     #tap-here {
         display: block;
     }
@@ -87,6 +92,7 @@ header:hover {
         font-size: 12px;
     }
     div#next h1 {
+        padding: 1em; 
         font-size: 2em;
     }
     #next {
@@ -147,6 +153,10 @@ header:hover {
 
 
 @media (min-width: 1024px) {
+
+    #transbot {
+        height: 10%;
+     }
     div#next h1 {
         padding: 1em 1em 0em 1em; 
         font-size: 5em;
@@ -915,7 +925,7 @@ position: relative;
     visibility: visible !important;
     width: 100%;
     z-index: 1; 
-    height: 20%;
+   
     /*backdrop-filter: blur(0.700000762939453px); background: linear-gradient(180deg, #080808 100%, rgba(255, 255, 255, 0.00) 0%); */
     position: absolute;
     bottom: 0;
@@ -931,16 +941,18 @@ position: relative;
 
 /* Hide "Tap here" by default (only show on small screens) */
 #tap-here {
-    display: none;
-    font-size: 40px;
     text-shadow: rgb(123, 123, 123) -1px -1px 8px, rgb(110, 110, 110) -1px -1px 14px, rgb(122, 122, 122) -1px -1px 30px;
-    -webkit-text-fill-color: rgba(0, 0, 0, 0.07);
-    font-weight: 600;
+font-family: 'p1', "unbounded";
+    display: none;
+    font-size: 18px;
+    -webkit-text-fill-color: rgba(0, 0, 0, 0.04);
+    font-weight: 300;
  -webkit-text-stroke: 1px rgba(122, 122, 122, 0.01);
 }
 
 /* Show "Scroll Down" only on large screens */
 #scroll-down {
+    font-family: 'p1', "unbounded";
     display: block;
     -webkit-text-fill-color: rgba(0, 0, 0, 0.07);
 
@@ -1013,7 +1025,7 @@ opacity: 0;
 
 
 #glcanvas {
-    filter:  opacity(1) brightness(2) ;
+    filter:  opacity(1) brightness(2)  ;
     outline:0;
     top:0;
     z-index: 1;
