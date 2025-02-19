@@ -915,7 +915,7 @@ position: relative;
     visibility: visible !important;
     width: 100%;
     z-index: 1; 
-    height: 10%;
+    height: 20%;
     /*backdrop-filter: blur(0.700000762939453px); background: linear-gradient(180deg, #080808 100%, rgba(255, 255, 255, 0.00) 0%); */
     position: absolute;
     bottom: 0;
