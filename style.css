@@ -1014,7 +1014,7 @@ opacity: 0;
     margin: 0;
     /* backdrop-filter: blur(0.700000762939453px);*/
     font-weight: 300;
-    font-family: "Unbounded";
+    font-family: "Unbounded", "p1";
     text-align: center;
     background: linesar-gradient(to bottom right, #dcedffbe 50%, rgba(239, 255, 234, 0.832) 50%) bottom right / 50% 50% no-repeat, linear-gradient(to bottom left, #defeffe3 20%, rgba(232, 251, 255, 0.88) 50%) bottom left / 50% 50% no-repeat, linear-gradient(to top left, #ffffffeb 25%, rgba(255, 255, 255, 0.917) 50%) top left / 50% 50% no-repeat, linear-gradient(to top right, #e2e2e2ee 5%, rgb(255 255 255) 50%) top right / 50% 50% no-repeat;
     background-clip: text;
@@ -1058,7 +1058,6 @@ mix-blend-mode: hue;
 .boagrid.b {
     grid-area: b1;
     flex-direction: column;
-    align-items: stretch;
     
 }
 
@@ -1069,7 +1068,6 @@ mix-blend-mode: hue;
 .boagrid.d {
     grid-area: d1;
     flex-direction: column;
-    align-items: stretch;
     
 }
 
@@ -1178,7 +1176,6 @@ border-left: 0.5px solid var(--new);
     transition: visibility 2s linear 2s, transform 0.3s ease;
     visibility: hidden;
     transform: scale(0.95) translateY(50px);
-    align-items: stretch;
     padding: 0.5em;
     grid-template-rows: auto 1fr;
     background: rgb(255 255 255 / 0%);
