@@ -85,7 +85,7 @@ class SceneManager {
 
     loadModel() {
         const loader = new GLTFLoader();
-        loader.load('./4.glb', (glb) => {
+        loader.load('./ava.glb', (glb) => {
             this.root1 = glb.scene;
             this.adjustRootScale();
             this.root1.rotation.y = -0.7;
