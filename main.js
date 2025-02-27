@@ -106,17 +106,7 @@ function applyH1GlitchEffect() {
      
 
     
-    // Hover Events
-    gridContainer.addEventListener('mouseenter', () => {
-      // Trigger the exit animation on hover
-      exitTimeline.play();
-    });
-
-    gridContainer.addEventListener('mouseleave', () => {
-      // Reverse the animation when leaving
-      exitTimeline.reverse();
-    });
-
+    
 
 
 

@@ -172,6 +172,7 @@ class SceneManager {
         this.circle.rotation.y = Math.PI / -8;
         this.circle.scale.set(0.4, 0.4, 0.4);
         this.circle.position.y = 1;
+
         this.scene.add(this.circle);
 
         this.circle1 = new THREE.LineLoop(geometry, material);
