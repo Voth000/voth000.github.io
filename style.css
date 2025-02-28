@@ -1187,8 +1187,8 @@ border-left: 0.5px solid var(--new);
     transform: scale(0.95) translateY(50px);
     padding: 0.5em;
     grid-template-rows: auto 1fr;
-    background: rgb(255 255 255 / 0%);
-    box-shadow: inset 1px 0px 4px 2px rgb(206 206 206 / 22%), 1px -4px 1px 1px rgb(255 255 255 / 11%);
+    background: rgba(255, 132, 191, 0);
+    box-shadow: inset 1px 0px 4px 2px rgba(206, 206, 206, 0.22), 1px -4px 1px 1px rgb(255 255 255 / 11%);
     backdrop-filter: blur(8px);
     transition: transform 0.3s, flex-grow 0.3s;
     flex-wrap: wrap;
@@ -1303,18 +1303,17 @@ b {
     font-weight: 400;
 }
 
-#hover-image {
-    
+#hover-image { 
     z-index: 4;
-    max-width: 160px;
-    max-height: 100px;
+    max-width: 10em;
+    max-height: 10em;
     display: flex;
  object-fit: contain;
         padding: 0px 4px;
         width: fit-content;
         background: rgba(241, 241, 241, 0.733);
-        border: 1px solid rgb(255 255 255); 
-        box-shadow: rgb(255 255 255 / 27%) 2px 4px 13.6px 1px, rgb(212 212 212 / 63%) 2px 3px 11.5px -1px;
+        border: 1px solid rgb(255, 255, 255); 
+        box-shadow: rgb(255 255 255 / 27%) 2px 4px 13.6px 1px, rgba(51, 51, 51, 0.63) 2px 3px 11.5px -1px;
         backdrop-filter: blur(8px);
         align-items: center;
 }
