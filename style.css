@@ -629,7 +629,13 @@ background-size: cover;
  }
  /* ===== Scrollbar CSS ===== */
   /* Firefox */
+
+
   #connect {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
     height: 100vh;
     background: linear-gradient(rgba(255, 255, 255, 0) 0%, rgb(161 161 161 / 60%) 5%, rgb(255 255 255 / 98%) 100%);
  }
@@ -656,6 +662,10 @@ background-size: cover;
     width: 100vw;
     height: 100vh;
     overflow: hidden;
+   
+    display: flex;
+    align-items: center;
+    justify-content: center;
 }
 
 canvas {
@@ -667,6 +677,8 @@ canvas {
 
 
 .container {
+    scroll-snap-type: mandatory;
+    scroll-snap-type: y mandatory;
     display: grid;
     height: 100%;
     overflow-x: hidden;
@@ -676,12 +688,9 @@ canvas {
 }
 
 .section {
-    height: 100%; /* Full viewport height for each section */
-    width: 100%;
-    position: relative;
-    display: flex;
-    align-items: center;
-    justify-content: center;
+    scroll-snap-align: start;
+
+
    
 }
 
