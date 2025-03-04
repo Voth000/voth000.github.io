@@ -50,7 +50,7 @@ class SceneManager {
             antialias: true,  // Smooth edges
             canvas: this.canvas,
             alpha: true,      // Transparent background
-            powerPreference: "high-performance" // Force GPU rendering
+            
         });
 
         this.renderer.setSize(window.innerWidth, window.innerHeight);

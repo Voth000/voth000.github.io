@@ -630,10 +630,22 @@ background-size: cover;
  }
  /* ===== Scrollbar CSS ===== */
   /* Firefox */
-
+#hoverimg {
+    z-index: -1;
+    position: absolute;
+   
+    object-fit: cover;
+    height: 100vh;
+    width: 100%;
+    top: 0;
+    left: 0;
+}
 
   #connect {
-    background-image: url(test2.png);
+   
+    background-position: center;
+background-repeat: no-repeat;
+background-size: cover;
     position: relative;
     display: flex;
     align-items: center;
@@ -680,8 +692,8 @@ canvas {
 
 
 .container {
-    scroll-snap-type: mandatory;
-    scroll-snap-type: y mandatory;
+    scroll-snap-type: proximity;
+    scroll-snap-type: y proximity;
     display: grid;
     height: 100%;
     overflow-x: hidden;
@@ -997,7 +1009,7 @@ font-family: 'p1', "unbounded";
  
 
  #transbot.hai {
-    backdrop-filter: blur(0px); 
+    
     height: 10%;
     /*  background: linear-gradient(180deg, rgb(255 255 255 / 0%) 0%, rgba(255, 255, 255, 0.991) 80%, #ffffff 100%); */
  }

@@ -250,9 +250,6 @@ revealTimeline.to(container1,{
     });
 
 
-
-
-      
       next.addEventListener('mouseover', () => {
          container1.style.filter = "brightness(1.8) grayscale(0.8) blur(18px)";
          //container1.style.filter = "brightness(1) blur(18px)";
@@ -402,83 +399,4 @@ function revealGrid() {
 
 
 
-
-const textContainer = document.getElementById("scroll-down");
-
-// Only apply animations if on a large screen
-if (window.innerWidth >= 1000) {
-    applyTextEffects();
-}
-
-function applyTextEffects() {
-    const text = textContainer.textContent;
-    textContainer.innerHTML = ""; // Clear existing text
-
-    text.split("").forEach(letter => {
-        let span = document.createElement("span");
-        span.textContent = letter;
-        span.style.display = "inline-block"; 
-        span.style.webkitTextFillColor = "rgba(0, 0, 0, 0.03)"; 
-        span.style.webkitTextStroke = "1px rgba(122, 122, 122, 0.01)"; 
-        span.style.transition = "all 0.1s ease-out"; 
-        span.style.textShadow = "none"; 
-        textContainer.appendChild(span);
-    });
-
-    const spans = document.querySelectorAll("#scroll-down span");
-
-    function handleMouseMove(e) {
-        const mouseX = e.clientX;
-        const mouseY = e.clientY;
-        
-        const screenWidth = window.innerWidth;
-        const screenHeight = window.innerHeight;
-        const middleScreenX = screenWidth / 2;
-        const middleScreenY = screenHeight / 2;
-
-        spans.forEach((span, index) => {
-            const letterRect = span.getBoundingClientRect();
-            const letterCenterX = letterRect.left + letterRect.width / 2;
-            const letterCenterY = letterRect.top + letterRect.height / 2;
-
-            const distanceFromMouseX = Math.abs(letterCenterX - mouseX);
-            const distanceFromMouseY = Math.abs(letterCenterY - mouseY);
-
-            const strokeThickness = Math.floor(((middleScreenX - distanceFromMouseX) / middleScreenX) * 8) + 1;
-            const finalStroke = Math.min(9, Math.max(1, strokeThickness));
-            span.style.webkitTextStrokeWidth = `${finalStroke}px`;
-
-            const weight = Math.floor(((middleScreenY - distanceFromMouseY) / middleScreenY) * 400) + 100;
-            let offset = (index / spans.length) * 300;
-            span.style.fontVariationSettings = `'wght' ${Math.min(400, Math.max(100, weight + offset))}`;
-
-            const scaleSize = 1 + (finalStroke / 30);
-            span.style.transform = `scale(${scaleSize})`;
-
-            const spacing = finalStroke * 1;
-            span.style.marginRight = `${spacing}px`;
-
-            const shadowIntensity = Math.max(0, (middleScreenX - distanceFromMouseX) / middleScreenX);
-            span.style.textShadow = shadowIntensity > 0.1
-                ? `rgba(123, 123, 123, ${shadowIntensity}) -1px -1px ${6 * shadowIntensity}px,
-                   rgba(110, 110, 110, ${shadowIntensity}) -1px -1px ${12 * shadowIntensity}px,
-                   rgba(122, 122, 122, ${shadowIntensity}) -1px -1px ${30 * shadowIntensity}px`
-                : "none";
-        });
-    }
-
-    document.addEventListener("mousemove", handleMouseMove);
-}
-
-// Function to handle scroll action when user clicks
-function handleScrollDown() {
-    const nextDiv = document.querySelector('#bo');
-    if (nextDiv) {
-        nextDiv.scrollIntoView({ behavior: 'smooth' });
-    }
-}
-
-// Add event listener for click
-document.getElementById("tap-here").addEventListener("click", handleScrollDown);
-document.getElementById("scroll-down").addEventListener("click", handleScrollDown);
 
