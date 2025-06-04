@@ -17,7 +17,7 @@ uniform int frame;
 
 varying vec2 vUv;
 
-const float deltaBase = 1.0;
+const float deltaBase = 0.72;
 
 void main() {
     vec2 uv = vUv;
