@@ -12,25 +12,35 @@ document.addEventListener("DOMContentLoaded", async () => {
         return;
     }
 
+    // 🚀 **Power Preference Optimization**
+    const powerPref = window.innerWidth < 768 ? "low-power" : "high-performance";
     const renderer = new THREE.WebGLRenderer({
         canvas: canvas,
-        antialias: true,
+        antialias: false, // 🔥 Turn off AA for better mobile performance
         alpha: true,
-        preserveDrawingBuffer: true,
-        powerPreference: "high-performance",
+        preserveDrawingBuffer: false,
+        powerPreference: powerPref,
     });
 
     const scene = new THREE.Scene();
     const simScene = new THREE.Scene();
     const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 1);
 
-    const dpr = Math.min(window.devicePixelRatio, 2);
-    let width = window.innerWidth * dpr;
-    let height = window.innerHeight * dpr;
+    // 🚀 **Dynamic DPR (Limits on Mobile)**
+    const isMobile = window.innerWidth < 768;
+    const dpr = isMobile ? 1.25 : Math.min(window.devicePixelRatio, 2);
+    let width = Math.floor(window.innerWidth * dpr);
+    let height = Math.floor(window.innerHeight * dpr);
+
+    // 🚀 **Lower Resolution on Mobile**
+    const simResFactor = isMobile ? 3 : 2;
+    const simWidth = Math.floor(width / simResFactor);
+    const simHeight = Math.floor(height / simResFactor);
 
     renderer.setPixelRatio(dpr);
-    renderer.setSize(width / 2, height / 2, false);
+    renderer.setSize(simWidth, simHeight, false);
 
+    // 🚀 **Optimize Render Targets (Lower Res on Mobile)**
     const options = {
         format: THREE.RGBAFormat,
         type: THREE.HalfFloatType,
@@ -40,20 +50,16 @@ document.addEventListener("DOMContentLoaded", async () => {
         depthBuffer: false,
     };
 
-    let rtA = new THREE.WebGLRenderTarget(width / 2, height / 2, options);
-    let rtB = new THREE.WebGLRenderTarget(width / 2, height / 2, options);
-
-   
+    let rtA = new THREE.WebGLRenderTarget(simWidth, simHeight, options);
+    let rtB = new THREE.WebGLRenderTarget(simWidth, simHeight, options);
 
     const simMaterial = new THREE.ShaderMaterial({
         uniforms: {
             textureA: { value: null },
             mouse: { value: new THREE.Vector2(-10, -10) },
-            resolution: { value: new THREE.Vector2(width / 2, height / 2) },
+            resolution: { value: new THREE.Vector2(simWidth, simHeight) },
             time: { value: 0 },
             frame: { value: 0 },
-            texelSize: { value: new THREE.Vector2(1.0 / width, 1.0 / height) }, // Initialize
-
         },
         vertexShader: simulationVertexShader,
         fragmentShader: simulationFragmentShader,
@@ -78,22 +84,32 @@ document.addEventListener("DOMContentLoaded", async () => {
     scene.add(renderQuad);
 
     let frame = 0;
+    let lastTouchTime = 0;
 
-    // **✅ Correct Mouse & Touch Position Mapping**
+    // ✅ **Optimized Mouse & Touch Mapping**
     function updateMousePosition(clientX, clientY) {
         const rect = renderer.domElement.getBoundingClientRect();
 
         let x = (clientX - rect.left) / rect.width;
         let y = 1.0 - (clientY - rect.top) / rect.height; // Flip Y
 
-        // Scale to match simulation resolution (which is /2 of actual resolution)
-        x *= width / 2;
-        y *= height / 2;
+        x *= simWidth;
+        y *= simHeight;
 
         simMaterial.uniforms.mouse.value.set(x, y);
     }
 
-    // ✅ Mouse Events
+    // ✅ **Optimized Event Listeners (Touch Throttling)**
+    function handleTouchMove(e) {
+        e.preventDefault();
+        const now = performance.now();
+        if (now - lastTouchTime < 16) return; // 60 FPS limit
+        lastTouchTime = now;
+        if (e.touches.length > 0) {
+            updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+        }
+    }
+
     renderer.domElement.addEventListener("mousemove", (e) => {
         updateMousePosition(e.clientX, e.clientY);
     });
@@ -102,7 +118,6 @@ document.addEventListener("DOMContentLoaded", async () => {
         simMaterial.uniforms.mouse.value.set(-10, -10);
     });
 
-    // ✅ Touch Support for Mobile
     renderer.domElement.addEventListener("touchstart", (e) => {
         e.preventDefault();
         if (e.touches.length > 0) {
@@ -110,33 +125,28 @@ document.addEventListener("DOMContentLoaded", async () => {
         }
     });
 
-    renderer.domElement.addEventListener("touchmove", (e) => {
-        e.preventDefault();
-        if (e.touches.length > 0) {
-            updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
-        }
-    });
-    
-
+    renderer.domElement.addEventListener("touchmove", handleTouchMove);
     renderer.domElement.addEventListener("touchend", () => {
- 
         simMaterial.uniforms.mouse.value.set(-10, -10);
     });
 
-    // ✅ Handle Window Resize
+    // ✅ **Resize Event Handling**
     window.addEventListener("resize", () => {
-        width = window.innerWidth * dpr;
-        height = window.innerHeight * dpr;
+        width = Math.floor(window.innerWidth * dpr);
+        height = Math.floor(window.innerHeight * dpr);
 
-        renderer.setSize(width / 2, height / 2, false);
-        rtA.setSize(width / 2, height / 2);
-        rtB.setSize(width / 2, height / 2);
+        const simWidth = Math.floor(width / simResFactor);
+        const simHeight = Math.floor(height / simResFactor);
 
-        simMaterial.uniforms.resolution.value.set(width / 2, height / 2);
+        renderer.setSize(simWidth, simHeight, false);
+        rtA.setSize(simWidth, simHeight);
+        rtB.setSize(simWidth, simHeight);
+
+        simMaterial.uniforms.resolution.value.set(simWidth, simHeight);
         frame = 0;
     });
 
-    // ✅ Animation Loop
+    // ✅ **Animation Loop**
     const animate = () => {
         simMaterial.uniforms.frame.value = frame++;
         simMaterial.uniforms.time.value = performance.now() / 1000;
@@ -158,6 +168,7 @@ document.addEventListener("DOMContentLoaded", async () => {
 
     animate();
 });
+
 
 
 const textContainer = document.getElementById("scroll-down");
@@ -183,8 +194,11 @@ function applyTextEffects() {
     });
 
     const spans = document.querySelectorAll("#scroll-down span");
+    let lastUpdate = 0;
 
     function handleMouseMove(e) {
+        if (performance.now() - lastUpdate < 50) return; // Limit updates to ~20 FPS
+    lastUpdate = performance.now();
         const mouseX = e.clientX;
         const mouseY = e.clientY;
         

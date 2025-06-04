@@ -1,143 +1,136 @@
 export const simulationVertexShader = `
 varying vec2 vUv;
 void main() {
-vUv = uv;
-gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `;
 
-
 export const simulationFragmentShader = `
+precision mediump float;
 uniform sampler2D textureA;
 uniform vec2 mouse;
 uniform vec2 resolution;
-uniform vec2 texelSize;
 uniform float time;
 uniform int frame;
 varying vec2 vUv;
 
 const float delta = 1.2;
+const float dampingFactor = 0.005;
+const float viscosity = 0.002;
+const float decay = 0.999;
 
 void main() {
-vec2 uv = vUv;
-if (frame == 0) {
-gl_FragColor = vec4(0.0);
-return;
-}
+    vec2 uv = vUv;
 
-vec4 data = texture2D(textureA, uv);
-float pressure = data.x;
-float pVel = data.y;
+    if (frame == 0) {
+        gl_FragColor = vec4(0.0);
+        return;
+    }
 
+    vec4 data = texture2D(textureA, uv);
+    float pressure = data.x;
+    float pVel = data.y;
 
-    float texelSizeFactor = resolution.x > 500.0 ? 4.5 : 3.0; 
-    vec2 texelSize = texelSizeFactor / resolution; 
-    float p_right = texture2D(textureA, uv + vec2(texelSize.x, 0.0)).x;
-    float p_left  = texture2D(textureA, uv + vec2(-texelSize.x, 0.0)).x;
-    float p_up    = texture2D(textureA, uv + vec2(0.0, texelSize.y)).x;
-    float p_down  = texture2D(textureA, uv + vec2(0.0, -texelSize.y)).x;
-
-    if (uv.x <= texelSize.x) p_left = p_right;
-    if (uv.x >= 1.0 - texelSize.x) p_right = p_left;
-	if (uv.y <= texelSize.y) p_down = p_up;
-    if (uv.y >= 1.0 - texelSize.y) p_up = p_down;
-
-    pVel += delta * (-2.0 * pressure + p_right + p_left) / 4.0;
-   
-    pVel += delta * (-2.0 * pressure + p_up + p_down) / 4.0;
+    // Precompute texel size once
+    vec2 texelSize = (resolution.x > 500.0 ? 3.5 : 1.5) / resolution;
     
-  
+    // Optimized neighbor sampling with boundary checks
+    vec2 rightUV = uv + vec2(texelSize.x, 0.0);
+    vec2 leftUV = uv - vec2(texelSize.x, 0.0);
+    vec2 upUV = uv + vec2(0.0, texelSize.y);
+    vec2 downUV = uv - vec2(0.0, texelSize.y);
+    
+    // Clamp UVs to prevent boundary artifacts
+    rightUV = clamp(rightUV, vec2(0.0), vec2(1.0));
+    leftUV = clamp(leftUV, vec2(0.0), vec2(1.0));
+    upUV = clamp(upUV, vec2(0.0), vec2(1.0));
+    downUV = clamp(downUV, vec2(0.0), vec2(1.0));
+    
+    vec4 neighbors = vec4(
+        texture2D(textureA, rightUV).x,
+        texture2D(textureA, leftUV).x,
+        texture2D(textureA, upUV).x,
+        texture2D(textureA, downUV).x
+    );
+
+    // Simplified wave equation - combine horizontal and vertical updates
+    float laplacian = (neighbors.x + neighbors.y + neighbors.z + neighbors.w - 4.0 * pressure) * 0.25;
+    pVel += delta * laplacian;
+    
     pressure += delta * pVel;
-    
-    
-    pVel -= 0.005 * delta * pressure;
-    
-    
-    pVel *= 1.0 - 0.002 * delta;
-    
-   
-    pressure *= 0.999;
-    
+    pVel -= dampingFactor * delta * pressure;
+    pVel *= 1.0 - viscosity * delta;
+    pressure *= decay;
 
-    vec2 mouseUV = mouse / resolution;
-   // Stronger initial ripple effect at the center when the page loads
-vec2 initialCenter = vec2(0.5, 0.5);
-vec2 deltaUV = uv - initialCenter; 
-float initDistSquared = dot(deltaUV, deltaUV);  // Faster than distance()
-
-if(frame < 2) {  // Reduce frame count for better performance
-    if(initDistSquared <= 0.25) {  // Increase ripple size
-        float softness = 1.0 - initDistSquared * 2.0;  // Faster fade-out effect
-        pressure += 2.5 * max(softness, 0.0);  // Stronger effect
+    // Initial ripple effect (optimized)
+    if (frame < 2) {
+        vec2 deltaUV = uv - vec2(0.5);
+        float initDistSquared = dot(deltaUV, deltaUV);
+        if (initDistSquared <= 0.25) {
+            pressure += 2.5 * (1.0 - initDistSquared * 2.0);
+        }
     }
-}
 
-
-
-// Regular mouse ripple effect
-if(mouse.x > 0.0) {
-    float dist = distance(uv, mouseUV);
-    if(dist <= 0.02) {
-        float softness = smoothstep(0.02, 0.005, dist);
-        pressure += 1.2 * softness;
+    // Mouse ripple effect (optimized)
+    if (mouse.x > 0.0) {
+        vec2 mouseUV = mouse / resolution;
+        vec2 mouseDelta = uv - mouseUV;
+        float distSquared = dot(mouseDelta, mouseDelta);
+        
+        if (distSquared <= 0.0004) { // 0.02^2 = 0.0004
+            float dist = sqrt(distSquared);
+            float softness = smoothstep(0.02, 0.005, dist);
+            pressure += 1.2 * softness;
+        }
     }
-}
 
-    
-   gl_FragColor = vec4(pressure, pVel, (p_right - p_left) / 2.0, (p_up - p_down) / 2.0);
-   
+    // Compute gradients for normal calculation
+    float gradX = (neighbors.x - neighbors.y) * 0.5;
+    float gradY = (neighbors.z - neighbors.w) * 0.5;
 
+    gl_FragColor = vec4(pressure, pVel, gradX, gradY);
 }
 `;
 
 export const renderVertexShader = `
 varying vec2 vUv;
 void main() {
-vUv = uv;
-gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+    vUv = uv;
+    gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
 }
 `;
 
 export const renderFragmentShader = `
+precision mediump float;
 uniform sampler2D textureA;
-varying vec2 vUv;
 uniform float time;
+varying vec2 vUv;
 
-// Define the custom ripple colors
-const vec3 customGreen = vec3(0.7, 1, 0.3);  // Adjust green shade
-const vec3 customBlue  = vec3(1, 0.5, 0.6);   // Adjust blue shade
-
+const vec3 customGreen = vec3(0.7, 1.0, 0.3);
+const vec3 customBlue = vec3(1.0, 0.5, 0.6);
+const float normalStrength = 0.2;
 
 void main() {
     vec4 data = texture2D(textureA, vUv);
-    vec3 normal = normalize(vec3(-data.z, 0.2, -data.w));
-
-    float timeOffset = 0.02 * sin(time * 3.0);
-
-    // Adjust ripple offsets
-    vec2 offsetG = 0.024 * normal.xz - timeOffset * vec2(0.007, 0.003);
-    vec2 offsetB = 0.022 * normal.xz + timeOffset * vec2(-0.003, 0.007);
-
-    // Sample colors from texture with slight shifts
-    vec4 colG = texture2D(textureA, vUv + offsetG);
-    vec4 colB = texture2D(textureA, vUv + offsetB);
-
-    // Compute ripple intensity
-    float rippleStrengthG = colG.g;
-    float rippleStrengthB = colB.b;
-
-    // Apply custom colors
-    vec3 rippleColor = (rippleStrengthG * customGreen) + (rippleStrengthB * customBlue);
-
-    // Set transparency: more transparent in calm areas
-    float alpha = max(rippleStrengthG, rippleStrengthB) * 0.9;
+    
+    // Precompute normal and time-based offsets
+    vec3 normal = normalize(vec3(-data.z, normalStrength, -data.w));
+    vec2 timeOffset = 0.02 * sin(time * 3.0) * vec2(0.007, 0.003);
+    vec2 normalOffset = normal.xz;
+    
+    // Optimized offset calculations
+    vec2 offsetG = 0.024 * normalOffset - timeOffset;
+    vec2 offsetB = 0.022 * normalOffset + timeOffset;
+    
+    // Single texture sample for each offset
+    vec2 sampleG = texture2D(textureA, vUv + offsetG).gb;
+    vec2 sampleB = texture2D(textureA, vUv + offsetB).gb;
+    
+    // Combine colors
+    vec3 rippleColor = sampleG.x * customGreen + sampleB.y * customBlue;
+    float alpha = max(sampleG.x, sampleB.y) * 0.9;
 
     gl_FragColor = vec4(rippleColor, alpha);
 }
-
-
-
-
-
-
 `;

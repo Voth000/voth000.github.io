@@ -76,6 +76,15 @@ header:hover {
 
 
 @media (max-width: 1024px) {
+
+    #model { 
+        height: 80vh; 
+    }
+    
+    canvas#load.webgl:active, canvas#load.webgl:hover, canvas#load.webgl {
+touch-action: none;
+    }
+    
     #transbot {
         height: 20%;
      }
@@ -153,7 +162,9 @@ header:hover {
 
 
 @media (min-width: 1024px) {
-
+    #model {
+        height: 100vh;
+    }
     #transbot {
         height: 10%;
      }
@@ -186,6 +197,7 @@ header:hover {
             flex-direction: row;
         }
         #inside {
+            display: grid;
             gap: 0.5em;
             padding: 0em 1em 2em 1em;
         }
@@ -203,6 +215,10 @@ header:hover {
         }
         #t4 .cap1 {
             max-width: 16%;
+        }
+        .accordion { 
+   
+            height: -webkit-fill-available;
         }
 }
 
@@ -485,9 +501,6 @@ canvas {
 }
 
 
-canvas#load.webgl:active, canvas#load.webgl:hover, canvas#load.webgl {
-
-}
 
 
 
@@ -675,18 +688,13 @@ background-size: cover;
   #model {
     position: relative;
     width: 100vw;
-    height: 100vh;
     overflow: hidden;
-   
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-canvas {
-    width: 100% !important;
-    height: 100% !important;
-  }
+
 
 
 
@@ -1233,7 +1241,7 @@ border-left: 0.5px solid var(--new);
     font-weight: 200;
     font-size: 14px;
     /* background: linear-gradient(rgb(255 255 255 / 71%) 0%, rgb(255 255 255 / 10%) 100%); */
-   display: grid;
+   
     width: -webkit-fill-available;
    
     
@@ -1307,7 +1315,6 @@ border-left: 0.5px solid var(--new);
     /* align-items: end; */
     gap: 4px;
     color: var(--black);
-    height: -webkit-fill-available;
     align-content: center;
 }
 .accordion:hover {

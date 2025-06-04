@@ -187,8 +187,28 @@ class SceneManager {
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.autoRotate = false;
         this.controls.enableZoom = false;
-       // this.controls.enabled = !('ontouchstart' in window);
+       // Disable rotation on small screens
+    this.controls.enableRotate = window.innerWidth >= 1024;
 
+    // Listen for window resize to dynamically enable/disable rotation
+    window.addEventListener("resize", () => {
+        this.controls.enableRotate = window.innerWidth >= 1024;
+    });
+
+       // this.controls.enabled = !('ontouchstart' in window);
+ // Prevent OrbitControls from capturing scroll events when not over canvas
+ this.controls.mouseButtons = {
+    LEFT: THREE.MOUSE.ROTATE,
+    MIDDLE: THREE.MOUSE.DOLLY,
+    RIGHT: THREE.MOUSE.PAN
+};
+
+// Ensure scroll events propagate outside canvas
+this.renderer.domElement.addEventListener('wheel', (event) => {
+    if (!event.target.closest('canvas')) {
+        event.stopPropagation();
+    }
+}, { passive: false });
     }
     
 
@@ -334,7 +354,7 @@ class SceneManager {
 
         this.autoLoopTimeout = setTimeout(() => this.autoSwitchButton(), 8000);
 
-    
+        this.positionArrow();
         // Animate the new "bebe" element
         gsap.fromTo(bebes[this.activeIndex], 
             { y: 400, opacity: 0 }, 
@@ -350,21 +370,23 @@ class SceneManager {
 
     positionArrow() {
         const arrow = document.querySelector('.arrow');
-        const pointIndex = this.activeIndex; // Use activeIndex for the arrow position
-
-        // Check if points[pointIndex] is valid
-        if (this.points[pointIndex]) {
-            const vector = this.points[pointIndex].clone(); // Clone the point
-            vector.applyMatrix4(this.circle1.matrixWorld);
-            vector.project(this.camera);
-
-            const x = (vector.x * 0.5 + 0.5) * this.container.clientWidth;
-            const y = (vector.y * -0.5 + 0.5) * this.container.clientHeight;
-
-            arrow.style.left = `${x}px`;
-            arrow.style.top = `${y}px`;
-        }
+        const buttonPoints = [32, 52, 2, 18]; // Make sure this matches actual button indexes
+        const pointIndex = buttonPoints[this.activeIndex]; // Ensure activeIndex is correctly used
+    
+        // Safety check to prevent errors
+        if (!this.points[pointIndex]) return;
+    
+        const vector = this.points[pointIndex].clone();
+        vector.applyMatrix4(this.circle1.matrixWorld);
+        vector.project(this.camera);
+    
+        const x = (vector.x * 0.5 + 0.5) * this.container.clientWidth;
+        const y = (vector.y * -0.5 + 0.5) * this.container.clientHeight;
+    
+        arrow.style.left = `${x}px`;
+        arrow.style.top = `${y}px`;
     }
+    
 
 
  adjustRootScale() {
@@ -445,22 +467,30 @@ class SceneManager {
     
     positionArrow() {
         const arrow = document.querySelector('.arrow');
-        const buttonPoints = [40];
-        const pointIndex = buttonPoints[this.activeIndex];
-
-        const vector = this.points[pointIndex]?.clone();
-        if (vector) {
-            vector.applyMatrix4(this.circle1.matrixWorld);
-            vector.project(this.camera);
-
-            const x = (vector.x * 0.5 + 0.5) * this.container.clientWidth;
-            const y = (vector.y * -0.5 + 0.5) * this.container.clientHeight;
-
-            arrow.style.left = `${x}px`;
-            arrow.style.top = `${y}px`;
+        const buttonPoints = [32, 52, 2, 18]; // Ensure this is the correct mapping for buttons
+    
+        if (this.activeIndex >= buttonPoints.length) {
+            console.warn("Active index out of bounds for buttonPoints");
+            return;
         }
+    
+        const pointIndex = buttonPoints[this.activeIndex];
+        if (!this.points[pointIndex]) {
+            console.warn("No point found at index", pointIndex);
+            return;
+        }
+    
+        const vector = this.points[pointIndex].clone();
+        vector.applyMatrix4(this.circle1.matrixWorld);
+        vector.project(this.camera);
+    
+        const x = (vector.x * 0.5 + 0.5) * this.container.clientWidth;
+        const y = (vector.y * -0.5 + 0.5) * this.container.clientHeight;
+    
+        arrow.style.left = `${x}px`;
+        arrow.style.top = `${y}px`;
     }
-
+    
 
 animate() {
         requestAnimationFrame(() => this.animate());

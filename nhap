@@ -1348,3 +1348,25 @@ document.addEventListener("touchmove", (event) => {
 window.addEventListener("resize", resizeCanvas);
 
 draw();
+
+
+// ✅ Touch Support for Mobile
+    renderer.domElement.addEventListener("touchstart", (e) => {
+        e.preventDefault();
+        if (e.touches.length > 0) {
+            updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+        }
+    });
+
+    renderer.domElement.addEventListener("touchmove", (e) => {
+        e.preventDefault();
+        if (e.touches.length > 0) {
+            updateMousePosition(e.touches[0].clientX, e.touches[0].clientY);
+        }
+    });
+    
+
+    renderer.domElement.addEventListener("touchend", () => {
+ 
+        simMaterial.uniforms.mouse.value.set(-10, -10);
+    });
