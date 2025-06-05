@@ -1050,8 +1050,6 @@ div#next {
 
  div#next h1 {
     will-change: transform, opacity;
-  
-opacity: 0;
     pointer-events: none;
     margin: 0;
     /* backdrop-filter: blur(0.700000762939453px);*/

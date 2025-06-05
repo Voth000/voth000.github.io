@@ -71,24 +71,7 @@ function applyH1GlitchEffect() {
       // Apply filter
       h1.style.filter = `url(#${filterId})`;
 
-      // GSAP Reveal Animation
-      gsap.set(h1, { 
-          opacity: 0, 
-          scale: 0.3
-      });
-
-      // Reveal animation
-      const revealTimeline = gsap.timeline();
-      revealTimeline.to(h1, {
-          opacity: 1,
-          scale: 1,
-          duration: 3,
-          delay: 0,
-          ease: "power4.out"
-      });
-
-
-     
+      
 
     
     
