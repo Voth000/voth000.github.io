@@ -76,8 +76,8 @@ header:hover {
 
 
 @media (max-width: 1024px) {
-#rec {
-        display: none !important;
+#rec { 
+        display: none !important; 
     }
     #model { 
         height: 80vh; 
@@ -164,6 +164,13 @@ touch-action: none;
 
 
 @media (min-width: 1024px) {
+    #output {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: auto;
+  overflow: visible;
+}
     #model {
         height: 100vh;
     }

@@ -250,6 +250,5 @@ function handleScrollDown() {
 }
 
 // Add event listener for click
-document.getElementById("tap-here").addEventListener("click", handleScrollDown);
 document.getElementById("scroll-down").addEventListener("click", handleScrollDown);
 

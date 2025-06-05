@@ -6,22 +6,7 @@ const gridContainer = document.getElementById('boall');
 const gridItems = document.querySelectorAll('.boagrid');
 
 
-document.addEventListener('mousemove', (event) => {
-  const centDiv = document.querySelector('#rec .cent');
-  const { clientX } = event;
-  const { clientY } = event;
-  const { innerWidth, innerHeight } = window;
 
-  // Calculate the percentage of the mouse position relative to the window
-  const xPercent = (clientX / innerWidth) * 100;
-  const yPercent = (clientY / innerHeight) * 100;
-
-  // Set the background position to the inverse of the mouse position
-  const xOffset =  xPercent - 5; // Move in opposite direction
-  const yOffset =  yPercent - 5;
-
-  centDiv.style.backgroundPosition = `${xOffset}% ${yOffset}%`;
-});
 
 
 function applyH1GlitchEffect() {
