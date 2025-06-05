@@ -370,19 +370,18 @@
             font-weight: 400;
           }
         
-          .accordion span:after  {
-         content: "\2212";
-            color: #000000;
-            float: left;
-            
-          }
-          
-        .accordion.active span:after {
-              content: "\002B";
-            color: #0f0f0f;
-            float: left;
-           
-          }
+          .accordion span:after {
+    content: "\002B"; /* ➕ when closed */
+    color: #000;
+    float: left;
+}
+
+.accordion.active span:after {
+    content: "\2212"; /* ➖ when open */
+    color: #000;
+    float: left;
+}
+
 
           .name {
             font-size: 14px;
@@ -466,16 +465,21 @@ transform: scale(1.05);
     </style>
     <script>
         document.addEventListener("DOMContentLoaded", () => {
-            const accordions = document.querySelectorAll(".accordion");
+    const accordions = document.querySelectorAll(".accordion");
 
-            accordions.forEach(accordion => {
-                accordion.addEventListener("click", () => {
-                    accordion.classList.toggle("active");
-                    const panel = accordion.nextElementSibling;
-                    panel.classList.toggle("hidden");
-                });
-            });
+    accordions.forEach(accordion => {
+        // Ensure all panels are hidden on load
+        const panel = accordion.nextElementSibling;
+        panel.classList.add("hidden");
+
+        // Toggle logic
+        accordion.addEventListener("click", () => {
+            accordion.classList.toggle("active");
+            panel.classList.toggle("hidden");
         });
+    });
+});
+
     </script>
 </head>
 <body>
@@ -494,7 +498,7 @@ transform: scale(1.05);
             <div><b>Creative Coding</b></div>
             <span></span>
         </div>
-        <div class="panel">
+        <div class="panel hidden">
         
 
 <div class="work">
@@ -541,7 +545,7 @@ transform: scale(1.05);
            
             <span></span>
         </div>
-        <div class="panel">
+        <div class="panel hidden">
             <div class="work">
                 <div class="name"> FUNI</div>
                 <div class="link" onclick="window.open('https://www.figma.com/proto/R5sRSuXzIuM32C9MOFZA84/Advance-UX-Design?page-id=0%3A1&node-id=1-1950&viewport=443%2C1032%2C0.04&t=jwCHUqlmIuDoXmOn-1&scaling=contain&content-scaling=responsive','Bhn');"><img src="./assets/Home.jpg" alt=""> </div> 
@@ -557,7 +561,7 @@ transform: scale(1.05);
             <div><b>Exhibition</b></div>
             <span></span>
         </div>
-        <div class="panel">
+        <div class="panel hidden">
             <div class="work">
                 <div class="name"> Work Name</div>
                 <div class="link" onclick="window.open('https://voth000.github.io/bhn/','Bhn');"><img src="./assets/emp.jpg" alt=""> </div> 
@@ -593,7 +597,7 @@ transform: scale(1.05);
         <div><b>Installation</b></div>
         <span></span>
     </div>
-    <div class="panel">
+    <div class="panel hidden">
         <div class="work">
             <div class="name"> Work Name</div>
             <div class="link" onclick="window.open('https://voth000.github.io/bhn/','Bhn');"><img src="./assets/emp.jpg" alt=""> </div> 
@@ -626,7 +630,7 @@ transform: scale(1.05);
             <div><b>Live Event</b></div>
             <span></span>
         </div>
-        <div class="panel">
+        <div class="panel hidden">
             <div class="work">
                 <div class="name"> Work Name</div>
                 <div class="link" onclick="window.open('https://voth000.github.io/bhn/','Bhn');"><img src="./assets/emp.jpg" alt=""> </div> 
@@ -666,7 +670,7 @@ transform: scale(1.05);
             <div><b>Animation</b></div>
             <span></span>
         </div>
-        <div class="panel">
+        <div class="panel hidden">
             <div class="work">
                 <div class="name"> Work Name</div>
                 <div class="link" onclick="window.open('https://voth000.github.io/bhn/','Bhn');"><img src="./assets/emp.jpg" alt=""> </div> 
@@ -701,7 +705,7 @@ transform: scale(1.05);
          
             <span></span>
         </div>
-        <div class="panel">
+        <div class="panel hidden">
             <div class="work">
                 <div class="name"> <i>{2025}</i> Blu.ug reel promos</div>
                 <div class="link" onclick="window.open('https://www.instagram.com/p/DFMtfbztgga/','blucrew instagram post');">
@@ -800,7 +804,7 @@ transform: scale(1.05);
             <div><b>Print</b></div>
             <span></span>
         </div>
-        <div class="panel">
+        <div class="panel hidden">
             <p>Lorem ipsum dolor sit amet, consectetur adipisicing elit, sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.</p>
         </div>
     </div>
