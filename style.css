@@ -76,7 +76,9 @@ header:hover {
 
 
 @media (max-width: 1024px) {
-
+#rec {
+        display: none !important;
+    }
     #model { 
         height: 80vh; 
     }
@@ -165,6 +167,7 @@ touch-action: none;
     #model {
         height: 100vh;
     }
+    
     #transbot {
         height: 10%;
      }
