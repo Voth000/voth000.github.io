@@ -1,48 +1,39 @@
-
+/* Imports & Fonts */
 @import url('https://fonts.googleapis.com/css2?family=Unbounded:wght@200..900&display=swap');
-
-
-
 @import url('https://fonts.googleapis.com/css2?family=Doto:wght@100..900&display=swap');
 
 @font-face {
     font-family: 'p1';
     src: url("./Font/otf/Basteleur-Moonlight.otf") format('truetype');
 }
-
-
 @font-face {
     font-family: 'h2';
     src: url("./Font/otf/Ouvrieres-rassasiees.otf") format('truetype');
-  }
-
+}
 @font-face {
     font-family: 'h1';
     src: url("./Font/otf/Ouvrieres-rassasiees.otf") format('truetype');
-  }
+}
 
-  
-  .unbounded {
+.unbounded {
     font-family: "Unbounded", serif;
     font-optical-sizing: auto;
     font-weight: 200;
     font-style: normal;
-  }
-  
-  
+}
 
-  :root {
+/* Root Variables */
+:root {
     --new: #c3c3c399;
     --border-radius: 4em;
-    --black: black;
---navtext: #ffffff;
+    --black: #000000;
+    --navtext: #ffffff;
     --grey2: #ffffffbc;
     --grey1: #b0b0b065;
     --white: #ffffff;
     --themecolor: #ffffff00;
     --bg-color: radial-gradient(closest-side, #5d5d5de5 1%, #ffffff78 90%, rgb(255 255 255 / 20%) 55%);
-    ;
-    --shadow:  inset 1px 0px 4px 2px rgb(206 206 206 / 75%), 1px -4px 1px 1px rgb(255 255 255 / 8%);
+    --shadow:  inset 1px 0px 4px 2px rgb(206, 206, 206 / 75%), 1px -4px 1px 1px rgb(255 255 255 / 8%);
     --shadowhover:  inset 1px -1px 4px 2px rgba(177, 177, 177, 0.61), 1px -1px 4px 2px rgb(255 255 255 / 41%), 4px 4px 4px 0px rgba(105, 105, 105, 0.448);
     --boxshadow: 2px 4px 13.6px 1px rgba(255, 255, 255, 0.65), 2px 3px 11.5px -1px rgba(190, 190, 190, 0.28);
     --t1: 14px;
@@ -51,29 +42,39 @@
     --bgtrans: linear-gradient(180deg, rgba(247, 247, 247, 0.20) 0%, rgba(255, 255, 255, 0.00) 100%);
     --test:linear-gradient(rgba(255, 255, 255, 0.831) 5%, 20%, rgb(139 139 139 / 66%) 65%);
     --test2: linear-gradient(rgba(255, 255, 255, 0.052) 5%, 90%, rgba(135, 135, 135, 0.808) 10%);
---box: 4px 4px 4px 0px rgba(105, 105, 105, 0.448);
---box2: 2px 2px 2px 0px rgba(105, 105, 105, 0.363);
---animate: all 0.1s ease-in, transform 0.1s ease-out;
---filter: blur(14.550000190734863px);
+    --box: 4px 4px 4px 0px rgba(105, 105, 105, 0.448);
+    --box2: 2px 2px 2px 0px rgba(105, 105, 105, 0.363);
+    --animate: all 0.1s ease-in, transform 0.1s ease-out;
+    --filter: blur(14.550000190734863px);
+    /* New variables for repeated values */
+    --white-bg: #ffffff8b;
+    --white-bg2: #ffffff99;
+    --white-bg3: #fffffffa;
+    --white-bg4: #fffffff2;
+    --white-bg5: #ffffff69;
+    --white-bg6: #ffffffeb;
+    --white-bg7: #ffffff3d;
+    --white-bg8: #ffffff00;
+    --grey-bg: #eeeeee;
+    --shadow2: 0 2px 10px rgba(0,0,0,0.1);
+    --shadow3: 0px 4px 4px rgb(116 116 116 / 77%);
+    --shadow4: 0 0 10px white;
+    --shadow5: 0 0 10px #fff;
+    --shadow6: 0 0 10px #ffffff;
+    --shadow7: 0 0 10px #fff, 0 0 10px #fff;
+    --shadow8: 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff;
+    --shadow9: 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff;
+    --shadow10: 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff;
+    --shadow11: 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff;
+    --shadow12: 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff;
+    --shadow13: 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff;
+    --shadow14: 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff;
+    --shadow15: 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff, 0 0 10px #fff;
 }
 
-
-/*header {
-    position: fixed;
-justify-content: start;
-z-index: 1;
-gap: 1em;
-    width: 100%;
-    grid-template-columns: 1fr auto;
-    display: grid;
-
-
-}
-
-header:hover {
-    z-index: 6;
-} */
-
+/* ===================== */
+/* Media Queries         */
+/* ===================== */
 
 @media (max-width: 1024px) {
 #rec { 
