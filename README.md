@@ -1,11 +1,2 @@
 # voth000.github.io
-Portfolio
-
-## Optimization Scripts
-
-# Minify JS (requires terser)
-npx terser script.js -o script.min.js --compress --mangle
-npx terser main.js -o main.min.js --compress --mangle
-npx terser index.js -o index.min.js --compress --mangle
-npx terser GLTFLoader.js -o GLTFLoader.min.js --compress --mangle
-npx terser DragControls.js -o DragControls.min.js --compress --mangle
+Porfolio

@@ -187,29 +187,60 @@ class SceneManager {
         this.controls = new OrbitControls(this.camera, this.renderer.domElement);
         this.controls.autoRotate = false;
         this.controls.enableZoom = false;
-       // Disable rotation on small screens
-    this.controls.enableRotate = window.innerWidth >= 1024;
-
-    // Listen for window resize to dynamically enable/disable rotation
-    window.addEventListener("resize", () => {
-        this.controls.enableRotate = window.innerWidth >= 1024;
-    });
-
-       // this.controls.enabled = !('ontouchstart' in window);
- // Prevent OrbitControls from capturing scroll events when not over canvas
- this.controls.mouseButtons = {
-    LEFT: THREE.MOUSE.ROTATE,
-    MIDDLE: THREE.MOUSE.DOLLY,
-    RIGHT: THREE.MOUSE.PAN
-};
-
-// Ensure scroll events propagate outside canvas
-this.renderer.domElement.addEventListener('wheel', (event) => {
-    if (!event.target.closest('canvas')) {
-        event.stopPropagation();
+        this.controls.enableRotate = true;
+    
+        // Prevent OrbitControls from capturing unintended touch gestures
+        this.controls.touches = {
+            ONE: THREE.TOUCH.ROTATE,
+            TWO: THREE.TOUCH.DOLLY_PAN
+        };
+    
+        // Ensure scrolling outside the canvas still works
+        this.renderer.domElement.style.touchAction = "none"; // Prevents browser gestures from blocking controls
+    
+        let touchStartY = 0;
+        let touchEndY = 0;
+        let isTouchScrolling = false;
+    
+        // Detect touch start
+        window.addEventListener("touchstart", (e) => {
+            touchStartY = e.touches[0].clientY;
+        });
+    
+        // Detect touch move
+        window.addEventListener("touchmove", (e) => {
+            touchEndY = e.touches[0].clientY;
+            const deltaY = touchStartY - touchEndY;
+    
+            if (Math.abs(deltaY) > 30) {
+                isTouchScrolling = true;
+                this.controls.enabled = false; // Disable controls during scrolling
+            }
+        });
+    
+        // Re-enable controls after touch ends
+        window.addEventListener("touchend", () => {
+            setTimeout(() => {
+                isTouchScrolling = false;
+                this.controls.enabled = true;
+            }, 200);
+        });
+    
+        // Prevent OrbitControls from capturing scroll events when not over canvas
+        this.controls.mouseButtons = {
+            LEFT: THREE.MOUSE.ROTATE,
+            MIDDLE: THREE.MOUSE.DOLLY,
+            RIGHT: THREE.MOUSE.PAN
+        };
+    
+        // Ensure scroll events propagate outside the canvas
+        this.renderer.domElement.addEventListener("wheel", (event) => {
+            if (!event.target.closest("canvas")) {
+                event.stopPropagation();
+            }
+        }, { passive: false });
     }
-}, { passive: false });
-    }
+    
     
 
     setupHoverEffects() {

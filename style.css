@@ -192,9 +192,9 @@ touch-action: none;
            /* box-shadow: rgb(255 255 255) 2px 4px 13.6px 1px, rgb(255 255 255) 2px 3px 11.5px -1px;*/
           grid-template-rows: 1fr 0.5fr 1fr;
           grid-template-columns: 1fr 0.5fr 1fr;
-          padding: 0em;
+          padding: 2em;
             display: grid;
-            height: 95vh;
+            height: 90vh;
             /*width: 100%;*/
             grid-template-areas:
             "d1 f1 b1 "
